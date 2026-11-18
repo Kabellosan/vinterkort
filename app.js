@@ -537,9 +537,14 @@ async function openCalibrate() {
     const [lat, lon] = pxToGeo(cur.calib, cur.w / 2, cur.h / 2);
     calB.setView([lat, lon], 18);
   } else {
-    calB.setView(VIBY, 15);
-    $('calQ').value = cur.address || '';
-    if (cur.address) geocode(cur.address);
+    // Start near another calibrated stop on the same route, else Viby.
+    const sib = (await DB.all()).filter((m) => m.calib && m.route && m.route === cur.route);
+    if (sib.length) { const s0 = sib[0]; calB.setView(pxToGeo(s0.calib, s0.w / 2, s0.h / 2), 15); }
+    else calB.setView(VIBY, 15);
+    const q = cur.address || addressFromFileName(cur.fileName || '');
+    $('calQ').value = q;
+    if (q) geocode(q);
+    else toast('No address found in this PDF. Search for it, or pan the map by hand.', 4000);
   }
   const others = (await DB.all()).filter((m) => m.id !== cur.id && m.calib);
   $('calCopy').hidden = others.length === 0;
@@ -635,14 +640,35 @@ $('calSave').onclick = async () => {
   openViewer(cur.id);
 };
 $('calSearch').onsubmit = (e) => { e.preventDefault(); const q = $('calQ').value.trim(); if (q) geocode(q); $('calQ').blur(); };
+// Try a few spellings of the address, preferring results around Aarhus.
 async function geocode(q) {
+  const variants = [q];
+  const noCity = q.replace(/(\d{4})\s+\D+$/, '$1').trim();
+  if (noCity !== q) variants.push(noCity);
+  const street = q.split(',')[0].trim();
+  if (street !== q) { variants.push(street + ', Aarhus'); variants.push(street); }
   try {
-    const u = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&q=' + encodeURIComponent(q);
-    const r = await fetch(u, { headers: { 'Accept-Language': 'da,en' } });
-    const j = await r.json();
-    if (j && j[0]) calB.setView([+j[0].lat, +j[0].lon], 18);
-    else toast('Address not found. Try a nearby street.');
-  } catch (e) { toast('No internet for address search. Pan the map by hand.'); }
+    for (const v of variants) {
+      const u = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&viewbox=9.95,56.25,10.35,56.05&q=' + encodeURIComponent(v);
+      const r = await fetch(u, { headers: { 'Accept-Language': 'da,en' } });
+      const j = await r.json();
+      if (j && j[0]) {
+        calB.setView([+j[0].lat, +j[0].lon], 18);
+        toast('Found: ' + j[0].display_name.split(',').slice(0, 3).join(','), 4000);
+        return true;
+      }
+    }
+    toast('Address not found. Try a street name nearby, or pan the map by hand.', 4000);
+  } catch (e) { toast('Address search needs internet. Pan the map by hand.'); }
+  return false;
+}
+// Work orders from Skyhost often have the address squashed into the file name, e.g. "stensagervej11-udskolingen.pdf".
+function addressFromFileName(fn) {
+  const m = fn.toLowerCase().match(/([a-zæøå]{3,}(?:vej|gade|allé|alle|vænget|parken|torv|plads|stien|boulevard|toften|haven|bakken|høj|centret|centeret|stræde))(\d{1,7}(?:[a-z](?![a-zæøå]))?)?/);
+  if (!m) return '';
+  let name = m[1][0].toUpperCase() + m[1].slice(1), num = m[2] || '', post = '';
+  if (/^\d{5,7}$/.test(num)) { post = num.slice(-4); num = num.slice(0, -4); }
+  return (name + (num ? ' ' + num : '') + (post ? ', ' + post : '')).trim();
 }
 $('calCopy').onclick = async () => {
   const others = (await DB.all()).filter((m) => m.id !== cur.id && m.calib);
