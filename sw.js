@@ -1,5 +1,5 @@
 /* Vinterkort service worker: offline app shell + Android "share to" inbox. */
-const VERSION = 'vk-v2';
+const VERSION = 'vk-v3';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',,
   'lib/leaflet.css', 'lib/leaflet.js', 'lib/pdf.min.js', 'lib/pdf.worker.min.js', 'lib/images/layers.png', 'lib/images/layers-2x.png'];
 
@@ -27,10 +27,14 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   // Map tiles and address search: network only (calibration needs internet anyway).
   if (/arcgisonline|openstreetmap/.test(url.hostname)) return;
-  // App files: cache first, refresh in background.
+  // App files: network first (so updates show up right away), cache when offline.
   e.respondWith(caches.open(VERSION).then(async (c) => {
-    const hit = await c.match(e.request, { ignoreSearch: url.origin === location.origin });
-    const net = fetch(e.request).then((r) => { if (r.ok) c.put(e.request, r.clone()); return r; }).catch(() => hit);
-    return hit || net;
+    try {
+      const r = await fetch(e.request, { cache: 'no-cache' });
+      if (r.ok) c.put(e.request, r.clone());
+      return r;
+    } catch (err) {
+      return (await c.match(e.request, { ignoreSearch: true })) || Response.error();
+    }
   }));
 });

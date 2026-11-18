@@ -17,7 +17,7 @@
 :root{
   --bg:#eef2f4; --surface:#ffffff; --ink:#14232e; --muted:#5a6b77; --line:#cfd8de;
   --accent:#0b6bcb; --accent-ink:#ffffff; --pink:#d6338a; --warn:#b5520b; --ok:#1d7a46;
-  --shadow:0 2px 10px rgba(20,35,46,.18);
+  --shadow:0 2px 10px rgba(20,35,46,.18); --bar:#14232e; --bar-ink:#ffffff;
   --font:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
   --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px);
@@ -25,7 +25,7 @@
 @media (prefers-color-scheme:dark){:root{
   --bg:#0e171d; --surface:#17242d; --ink:#e8eef2; --muted:#9aabb6; --line:#2c3d48;
   --accent:#4ea3f5; --accent-ink:#06121b; --pink:#f06aae; --warn:#f0a35a; --ok:#5cc98a;
-  --shadow:0 2px 12px rgba(0,0,0,.5); color-scheme:dark;
+  --shadow:0 2px 12px rgba(0,0,0,.5); --bar:#060d12; color-scheme:dark;
 }}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -33,7 +33,7 @@ body{background:var(--bg);color:var(--ink);font:16px/1.4 var(--font);-webkit-tap
 button,input,select,textarea{font:inherit;color:inherit}
 [hidden]{display:none!important}
 .screen{position:fixed;inset:0;display:flex;flex-direction:column}
-header.bar{display:flex;align-items:center;gap:8px;padding:calc(8px + var(--safe-t)) max(12px,var(--safe-r)) 8px max(12px,var(--safe-l));background:var(--ink);color:var(--bg);min-height:56px;z-index:1000}
+header.bar{display:flex;align-items:center;gap:8px;padding:calc(8px + var(--safe-t)) max(12px,var(--safe-r)) 8px max(12px,var(--safe-l));background:var(--bar);color:var(--bar-ink);min-height:56px;z-index:1000}
 header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .iconbtn{background:none;border:0;color:inherit;min-width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;padding:0 10px;cursor:pointer}
 .iconbtn:active{background:rgba(127,127,127,.25)}
