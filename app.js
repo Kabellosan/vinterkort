@@ -120,7 +120,7 @@ function findAddress(text, fileName) {
 }
 function niceName(fileName, address) {
   if (address) return address.slice(0, 80);
-  return fileName.replace(/\.pdf$/i, '').replace(/^\d{8,}_\d+-/, '').slice(0, 80) || 'Map';
+  return fileName.replace(/\.pdf$/i, '').replace(/^(\d{8,}_)?\d+-/, '').slice(0, 80) || 'Map';
 }
 async function pageText(page) {
   const tc = await page.getTextContent();
@@ -147,7 +147,7 @@ async function makeThumb(src) {
   t.getContext('2d').drawImage(src, 0, 0, t.width, t.height);
   return new Promise((r) => t.toBlob(r, 'image/jpeg', 0.8));
 }
-async function importFile(file) {
+async function importFile(file, route, orderStart) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const ids = [];
@@ -163,24 +163,33 @@ async function importFile(file) {
       fileName: file.name || '', added: Date.now(),
       image: r.blob, thumb: r.thumb, w: r.w, h: r.h,
       text, address, notes: '', calib: null, pts: [],
+      route: route || '', order: (orderStart || 0) + ids.length,
     };
     await DB.put(m); ids.push(m.id);
   }
   return ids;
 }
-async function importFiles(files) {
+async function importFiles(files, route) {
   let ids = [];
-  busy(true, 'Reading PDF…');
+  files = [...files].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'da', { numeric: true }));
+  let start = 0;
+  if (route) start = (await DB.all()).filter((m) => m.route === route).reduce((mx, m) => Math.max(mx, (m.order || 0) + 1), 0);
   try {
-    for (const f of files) ids = ids.concat(await importFile(f));
+    for (let i = 0; i < files.length; i++) {
+      busy(true, files.length > 1 ? `Reading PDF ${i + 1} of ${files.length}…` : 'Reading PDF…');
+      ids = ids.concat(await importFile(files[i], route, start + ids.length));
+    }
   } catch (e) {
     console.error(e); toast('Could not read that PDF: ' + (e.message || e));
   } finally { busy(false); }
   await renderLibrary();
-  if (ids.length === 1) openViewer(ids[0]);
-  else if (ids.length) toast(`Added ${ids.length} maps`);
+  if (ids.length === 1 && !route) openViewer(ids[0]);
+  else if (ids.length) toast(`Added ${ids.length} map${ids.length > 1 ? 's' : ''}` + (route ? ` to ${route}` : ''));
 }
-$('filePick').onchange = (e) => { const f = [...e.target.files]; e.target.value = ''; if (f.length) importFiles(f); };
+let pickRoute = '';
+$('filePick').onchange = (e) => { const f = [...e.target.files]; e.target.value = ''; const r = pickRoute; pickRoute = ''; if (f.length) importFiles(f, r); };
+function pickInto(route) { pickRoute = route || ''; $('filePick').click(); }
+$('btnAddLoose').onclick = () => pickInto('');
 
 // Files shared to the installed app (Android share sheet) arrive via the service worker.
 async function checkInbox() {
@@ -207,19 +216,100 @@ function blobUrl(key, blob) {
   if (urls.has(key)) URL.revokeObjectURL(urls.get(key));
   const u = URL.createObjectURL(blob); urls.set(key, u); return u;
 }
+let editRoute = null; // route name whose order is being edited
+function routeStops(maps, route) {
+  return maps.filter((m) => (m.route || '') === route).sort((a, b) => (a.order || 0) - (b.order || 0) || a.added - b.added);
+}
+function stopNo(maps, m) { return m.route ? routeStops(maps, m.route).indexOf(m) + 1 : 0; }
 async function renderLibrary() {
-  const maps = (await DB.all()).sort((a, b) => b.added - a.added);
+  const maps = await DB.all();
   const list = $('mapList'); list.innerHTML = '';
   $('emptyMsg').hidden = maps.length > 0;
-  for (const m of maps) {
-    const b = document.createElement('button');
-    b.className = 'card';
-    b.innerHTML = `<img alt="" src="${blobUrl('t' + m.id, m.thumb || m.image)}"><div class="t"><div class="n">${esc(m.name)}</div>` +
-      `<div class="s">${esc(m.address || m.fileName || '')}</div>` +
-      (m.calib ? '<span class="pill ok">GPS ready</span>' : '<span class="pill no">Needs calibration</span>') + '</div>';
-    b.onclick = () => openViewer(m.id);
-    list.appendChild(b);
+  const routes = [...new Set(maps.filter((m) => m.route).map((m) => m.route))].sort((a, b) => a.localeCompare(b, 'da'));
+  const groups = routes.map((r) => [r, routeStops(maps, r)]);
+  const loose = maps.filter((m) => !m.route).sort((a, b) => b.added - a.added);
+  if (loose.length) groups.push(['', loose]);
+  for (const [route, items] of groups) {
+    const sec = document.createElement('section'); sec.className = 'group';
+    const ready = items.filter((m) => m.calib).length;
+    const editing = route && editRoute === route;
+    const h = document.createElement('div'); h.className = 'ghead';
+    h.innerHTML = `<div class="gt"><div class="gn">${route ? esc(route) : 'Other maps'}</div><div class="s">${items.length} map${items.length === 1 ? '' : 's'} · ${ready} GPS ready</div></div>`;
+    if (route) {
+      const add = document.createElement('button'); add.className = 'btn secondary sm'; add.textContent = '+ PDFs'; add.onclick = () => pickInto(route);
+      const ord = document.createElement('button'); ord.className = 'btn secondary sm'; ord.textContent = editing ? 'Done' : 'Edit';
+      ord.onclick = () => { editRoute = editing ? null : route; renderLibrary(); };
+      h.append(add, ord);
+    }
+    sec.appendChild(h);
+    if (editing) {
+      const rr = document.createElement('div'); rr.className = 'editbar';
+      rr.innerHTML = `<input id="routeName" value="${esc(route)}" aria-label="Route name"><button class="btn sm" id="routeRename">Rename</button>`;
+      sec.appendChild(rr);
+      rr.querySelector('#routeRename').onclick = async () => {
+        const v = rr.querySelector('#routeName').value.trim(); if (!v || v === route) return;
+        for (const m of items) { m.route = v; await DB.put(m); }
+        editRoute = v; renderLibrary();
+      };
+      const hint = document.createElement('p'); hint.className = 'calhelp'; hint.textContent = 'Use the arrows to match the stop order in Skyhost.'; sec.appendChild(hint);
+    }
+    items.forEach((m, i) => {
+      const row = document.createElement('div'); row.className = 'row1';
+      const b = document.createElement('button');
+      b.className = 'card';
+      b.innerHTML = (route ? `<span class="stopno">${i + 1}</span>` : '') +
+        `<img alt="" src="${blobUrl('t' + m.id, m.thumb || m.image)}"><div class="t"><div class="n">${esc(m.name)}</div>` +
+        `<div class="s">${esc(m.address && m.address !== m.name ? m.address : m.fileName || '')}</div>` +
+        (m.calib ? '<span class="pill ok">GPS ready</span>' : '<span class="pill no">Needs calibration</span>') + '</div>';
+      b.onclick = () => openViewer(m.id);
+      row.appendChild(b);
+      if (editing) {
+        const mk = (label, aria, fn, dis) => { const x = document.createElement('button'); x.className = 'iconbtn mv'; x.textContent = label; x.setAttribute('aria-label', aria); x.disabled = dis; x.onclick = fn; return x; };
+        const swap = async (j) => { const a = items[i], c = items[j]; items[i] = c; items[j] = a; await saveOrder(items); };
+        const col = document.createElement('div'); col.className = 'mvcol';
+        col.append(mk('▲', 'Move up', () => swap(i - 1), i === 0), mk('▼', 'Move down', () => swap(i + 1), i === items.length - 1));
+        row.appendChild(col);
+      }
+      sec.appendChild(row);
+    });
+    list.appendChild(sec);
   }
+  updateHere(maps);
+}
+async function saveOrder(items) {
+  for (let k = 0; k < items.length; k++) { items[k].order = k; await DB.put(items[k]); }
+  renderLibrary();
+}
+$('btnNewRoute').onclick = () => { $('newRouteName').value = ''; openSheet('routeSheet'); setTimeout(() => $('newRouteName').focus(), 50); };
+$('newRouteForm').onsubmit = (e) => {
+  e.preventDefault();
+  const v = $('newRouteName').value.trim(); if (!v) return;
+  closeSheet(); pickInto(v);
+};
+
+/* Which calibrated map is the person standing in? Prefers the one whose centre is closest. */
+function mapAt(maps, lat, lon) {
+  let best = null, bestD = Infinity;
+  for (const m of maps) {
+    if (!m.calib) continue;
+    const [x, y] = geoToPx(m.calib, lat, lon);
+    if (x < 0 || y < 0 || x > m.w || y > m.h) continue;
+    const d = Math.hypot(x - m.w / 2, y - m.h / 2) / m.calib.pxPerM;
+    if (d < bestD) { bestD = d; best = m; }
+  }
+  return best;
+}
+let libMaps = [];
+function updateHere(maps) {
+  if (maps) libMaps = maps;
+  const el = $('hereCard');
+  if (!lastFix || $('library').hidden) { el.hidden = true; return; }
+  const m = mapAt(libMaps, lastFix.coords.latitude, lastFix.coords.longitude);
+  if (!m) { el.hidden = true; return; }
+  const n = stopNo(libMaps, m);
+  $('hereText').textContent = (n ? `#${n} ` : '') + m.name;
+  el.onclick = () => openViewer(m.id);
+  el.hidden = false;
 }
 
 /* ---------- viewer ---------- */
@@ -243,7 +333,14 @@ async function openViewer(id) {
   cur = await DB.get(id);
   if (!cur) return;
   show('viewer');
-  $('viewTitle').textContent = cur.name;
+  const all = await DB.all(); libMaps = all;
+  const stops = cur.route ? routeStops(all, cur.route) : [];
+  const idx = stops.findIndex((m) => m.id === cur.id);
+  $('viewTitle').textContent = (idx >= 0 ? `#${idx + 1} ` : '') + cur.name;
+  $('viewPrev').hidden = $('viewNext').hidden = idx < 0;
+  $('viewPrev').disabled = idx <= 0; $('viewNext').disabled = idx < 0 || idx >= stops.length - 1;
+  $('viewPrev').onclick = () => idx > 0 && openViewer(stops[idx - 1].id);
+  $('viewNext').onclick = () => idx < stops.length - 1 && openViewer(stops[idx + 1].id);
   if (vmap) { vmap.remove(); vmap = null; }
   ({ map: vmap, img: vimg } = setupImageMap($('viewMap'), cur));
   meMarker = null; accCircle = null;
@@ -253,7 +350,7 @@ async function openViewer(id) {
   updateStatus();
   if (lastFix) onFix(lastFix);
 }
-function closeViewer() { stopGPS(); releaseWake(); show('library'); renderLibrary(); }
+function closeViewer() { releaseWake(); cur = null; show('library'); renderLibrary(); }
 $('viewBack').onclick = closeViewer;
 
 function setFollow(on) {
@@ -283,6 +380,7 @@ function onFix(pos) {
   lastFix = pos;
   if (pos.coords.heading != null && !isNaN(pos.coords.heading) && pos.coords.speed > 0.7 && !compassOn) heading = pos.coords.heading;
   if (!$('calibrate').hidden) return;
+  if (!$('library').hidden) { updateHere(); return; }
   if (!cur || !vmap) return;
   updateStatus();
   if (!cur.calib) return;
@@ -308,9 +406,13 @@ function drawHeading() {
   cone.hidden = false;
   cone.style.transform = `rotate(${heading + rot}deg)`;
 }
-function setStatus(kind, msg, showCal) {
+let statusAction = null;
+function setStatus(kind, msg, action, label) {
   const s = $('status'); s.className = 'status ' + (kind || '');
-  $('statusMsg').textContent = msg; $('statusCal').hidden = !showCal;
+  $('statusMsg').textContent = msg;
+  if (action === true) { action = () => openCalibrate(); label = 'Calibrate'; }
+  statusAction = action || null;
+  $('statusCal').hidden = !action; if (action) $('statusCal').textContent = label;
 }
 function updateStatus() {
   if (!cur) return;
@@ -321,12 +423,18 @@ function updateStatus() {
   if (x >= 0 && y >= 0 && x <= cur.w && y <= cur.h) {
     setStatus(accuracy <= 15 ? 'good' : 'bad', `You are on this map · GPS ±${Math.round(accuracy)} m`);
   } else {
+    const other = mapAt(libMaps.filter((m) => m.id !== cur.id), lat, lon);
+    if (other) {
+      const n = stopNo(libMaps, other);
+      setStatus('bad', `You're at ${n ? '#' + n + ' ' : ''}${other.name}`, () => openViewer(other.id), 'Open');
+      return;
+    }
     const [clat, clon] = pxToGeo(cur.calib, cur.w / 2, cur.h / 2);
     const [d, b] = distBearing(lat, lon, clat, clon);
     setStatus('bad', `Off the map. It is ${fmtDist(d)} ${dirName(b)} of you.`);
   }
 }
-$('statusCal').onclick = () => openCalibrate();
+$('statusCal').onclick = () => statusAction && statusAction();
 
 /* compass (which way the phone points) */
 function onOrient(e) {
@@ -557,7 +665,7 @@ $('calCopy').onclick = async () => {
 /* ---------- start ---------- */
 $('btnHelp').onclick = () => openSheet('helpSheet');
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-renderLibrary().then(checkInbox);
+renderLibrary().then(() => { if (libMaps.some((m) => m.calib)) startGPS(); }).then(checkInbox);
 
 // test hooks
 window.__vk = { fitCalib, geoToPx, pxToGeo, importFiles, DB, get calA() { return calA; }, get calB() { return calB; }, get cur() { return cur; }, imgLL };

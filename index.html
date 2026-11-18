@@ -59,7 +59,26 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
 .empty ol{padding-left:20px;margin:8px 0}
 .empty li{margin:6px 0}
 .addbar{position:fixed;left:0;right:0;bottom:0;padding:12px max(16px,var(--safe-r)) calc(12px + var(--safe-b)) max(16px,var(--safe-l));display:flex;justify-content:center;background:linear-gradient(transparent,var(--bg) 40%)}
-.addbar .btn{width:100%;max-width:480px;font-size:18px;min-height:56px}
+.addbar{gap:10px}
+.addbar .btn{flex:2;max-width:320px;font-size:18px;min-height:56px}
+.addbar .btn.secondary{flex:1;max-width:160px;font-size:16px}
+.group{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
+.ghead{display:flex;align-items:center;gap:8px;padding:4px 2px}
+.ghead .gt{flex:1;min-width:0}
+.ghead .gn{font-weight:800;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn.sm{min-height:40px;padding:6px 12px;font-size:14px}
+.row1{display:flex;gap:6px;align-items:stretch}
+.row1 .card{flex:1;min-width:0}
+.stopno{flex:none;min-width:30px;height:30px;border-radius:99px;background:var(--ink);color:var(--bg);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:15px;font-variant-numeric:tabular-nums}
+.mvcol{display:flex;flex-direction:column;gap:4px}
+.mvcol .mv{flex:1;background:var(--surface);border:1px solid var(--line);font-size:16px}
+.mvcol .mv:disabled{opacity:.3}
+.editbar{display:flex;gap:8px}
+.editbar input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--surface)}
+.here{display:flex;align-items:center;gap:12px;width:100%;max-width:640px;margin:0 auto 14px;border:0;border-radius:14px;padding:14px;background:var(--accent);color:var(--accent-ink);text-align:left;cursor:pointer;box-shadow:var(--shadow)}
+.here .k{font-size:13px;font-weight:700;opacity:.85}
+.here .v{font-weight:800;font-size:17px}
+#viewer .iconbtn:disabled{opacity:.3}
 
 /* Viewer */
 #viewMap,#calA,#calB{flex:1;background:var(--bg)}
@@ -127,22 +146,24 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
     <button class="iconbtn" id="btnHelp" aria-label="How it works">Help</button>
   </header>
   <main>
+    <button class="here" id="hereCard" hidden><svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="6"/></svg><div><div class="k">You're at</div><div class="v" id="hereText"></div></div></button>
     <div class="list" id="mapList"></div>
     <div class="empty" id="emptyMsg" hidden>
       <h2>No maps yet</h2>
       <p>Add the PDF work orders you get for salting. They are stored only on this phone.</p>
       <ol>
-        <li><b>Add PDF</b> and pick a work order.</li>
+        <li><b>New route</b>: give it the Skyhost route name and pick all its PDFs at once. Then tap <b>Edit</b> to put them in the same order as Skyhost.</li>
         <li><b>Calibrate it once:</b> line up 2–3 spots on the PDF with the same spots on a satellite map. Or walk to a corner and tap "I'm standing here".</li>
         <li>Open it any time and the blue dot shows where you are, even without internet.</li>
       </ol>
     </div>
   </main>
   <div class="addbar">
-    <label class="btn" for="filePick">
+    <button class="btn" id="btnNewRoute">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      Add PDF
-    </label>
+      New route
+    </button>
+    <button class="btn secondary" id="btnAddLoose">Single PDF</button>
     <input type="file" id="filePick" accept="application/pdf,.pdf" multiple hidden>
   </div>
 </section>
@@ -152,6 +173,8 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   <header class="bar">
     <button class="iconbtn" id="viewBack" aria-label="Back to list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
     <h1 id="viewTitle">Map</h1>
+    <button class="iconbtn" id="viewPrev" aria-label="Previous stop" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg></button>
+    <button class="iconbtn" id="viewNext" aria-label="Next stop" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
     <button class="iconbtn" id="viewMenu" aria-label="Map options"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
   </header>
   <div style="position:relative;flex:1;display:flex">
@@ -226,11 +249,23 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   <div class="bd"><p class="calhelp">Use this when you get a new version of the same work order with the same map picture.</p><div class="list" id="copyList"></div></div>
 </div>
 
+<!-- NEW ROUTE SHEET -->
+<div class="sheet" id="routeSheet" hidden>
+  <div class="hd"><h2>New route</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+  <form class="bd" id="newRouteForm">
+    <label for="newRouteName">Route name</label>
+    <input id="newRouteName" placeholder="e.g. H3 Viby J" style="border:1.5px solid var(--line);border-radius:10px;padding:12px;background:var(--bg);font-size:18px" autocomplete="off">
+    <button class="btn" type="submit">Pick the route's PDFs</button>
+    <p class="calhelp">You can select many PDFs at once. Add more later with "+ PDFs".</p>
+  </form>
+</div>
+
 <!-- HELP SHEET -->
 <div class="sheet" id="helpSheet" hidden>
   <div class="hd"><h2>How it works</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
   <div class="bd">
     <p><b>Add to home screen</b> first (Safari: Share → Add to Home Screen. Chrome: ⋮ → Add to Home screen / Install). Then it opens like an app and works offline. On Android you can also share a PDF straight to Vinterkort.</p>
+    <p><b>Routes.</b> Make one route per Skyhost route, add all its PDFs, and use Edit to match the stop order. In a map, the arrows at the top go to the previous and next stop. When you walk into another stop's area, the bar at the bottom says "You're at #5…" with an Open button.</p>
     <p><b>Calibrate once per PDF.</b> The PDFs are pictures without map coordinates, so the app needs to learn where the picture sits in the world. Line up 2–3 spots far apart (opposite corners of the area work best). More points = more accurate. After 2 points, slide "PDF on top" to check the PDF lines up with the satellite picture.</p>
     <p><b>"I'm standing here"</b> works without internet: walk to a spot you can find on the PDF, put the top cross on it and tap the button. GPS is ±5 m, so pick spots far apart.</p>
     <p><b>The blue dot</b> shows where you are. The light circle around it is how sure the GPS is. If you're off the map, the bar at the bottom tells you how far and which way.</p>
