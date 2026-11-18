@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Vinterkort</title>
+<meta name="theme-color" content="#14232e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="lib/leaflet.css">
+<style>
+/* Layout: full-screen map app. Big touch targets for gloves, high contrast for daylight and snow glare. */
+:root{
+  --bg:#eef2f4; --surface:#ffffff; --ink:#14232e; --muted:#5a6b77; --line:#cfd8de;
+  --accent:#0b6bcb; --accent-ink:#ffffff; --pink:#d6338a; --warn:#b5520b; --ok:#1d7a46;
+  --shadow:0 2px 10px rgba(20,35,46,.18);
+  --font:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px);
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0e171d; --surface:#17242d; --ink:#e8eef2; --muted:#9aabb6; --line:#2c3d48;
+  --accent:#4ea3f5; --accent-ink:#06121b; --pink:#f06aae; --warn:#f0a35a; --ok:#5cc98a;
+  --shadow:0 2px 12px rgba(0,0,0,.5); color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 var(--font);-webkit-tap-highlight-color:transparent;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+[hidden]{display:none!important}
+.screen{position:fixed;inset:0;display:flex;flex-direction:column}
+header.bar{display:flex;align-items:center;gap:8px;padding:calc(8px + var(--safe-t)) max(12px,var(--safe-r)) 8px max(12px,var(--safe-l));background:var(--ink);color:var(--bg);min-height:56px;z-index:1000}
+header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iconbtn{background:none;border:0;color:inherit;min-width:44px;height:44px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;padding:0 10px;cursor:pointer}
+.iconbtn:active{background:rgba(127,127,127,.25)}
+.iconbtn svg{width:24px;height:24px}
+.btn{border:0;border-radius:12px;padding:12px 18px;min-height:48px;font-weight:700;background:var(--accent);color:var(--accent-ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.secondary{background:var(--surface);color:var(--ink);border:1.5px solid var(--line)}
+.btn:disabled{opacity:.4}
+.btn:focus-visible,.iconbtn:focus-visible,.fab:focus-visible{outline:3px solid var(--pink);outline-offset:2px}
+
+/* Library */
+#library main{flex:1;overflow:auto;padding:16px max(16px,var(--safe-r)) calc(110px + var(--safe-b)) max(16px,var(--safe-l))}
+.list{display:flex;flex-direction:column;gap:10px;max-width:640px;margin:0 auto}
+.card{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;cursor:pointer;text-align:left;width:100%}
+.card img{width:64px;height:64px;object-fit:cover;border-radius:8px;flex:none;background:var(--line)}
+.card .t{flex:1;min-width:0}
+.card .n{font-weight:700;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.card .s{font-size:13px;color:var(--muted)}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;margin-top:4px}
+.pill.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.pill.no{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.empty{max-width:520px;margin:24px auto;color:var(--muted)}
+.empty h2{color:var(--ink);font-size:20px;margin:0 0 8px}
+.empty ol{padding-left:20px;margin:8px 0}
+.empty li{margin:6px 0}
+.addbar{position:fixed;left:0;right:0;bottom:0;padding:12px max(16px,var(--safe-r)) calc(12px + var(--safe-b)) max(16px,var(--safe-l));display:flex;justify-content:center;background:linear-gradient(transparent,var(--bg) 40%)}
+.addbar .btn{width:100%;max-width:480px;font-size:18px;min-height:56px}
+
+/* Viewer */
+#viewMap,#calA,#calB{flex:1;background:var(--bg)}
+#viewMap .leaflet-container,.leaflet-container{background:var(--bg);font:inherit}
+.fabs{position:absolute;right:calc(12px + var(--safe-r));bottom:calc(84px + var(--safe-b));display:flex;flex-direction:column;gap:10px;z-index:900}
+.fab{width:56px;height:56px;border-radius:50%;border:0;background:var(--surface);color:var(--ink);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.fab svg{width:28px;height:28px}
+.fab.on{background:var(--accent);color:var(--accent-ink)}
+.status{position:absolute;left:calc(12px + var(--safe-l));right:calc(12px + var(--safe-r));bottom:calc(12px + var(--safe-b));z-index:900;background:var(--surface);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px;display:flex;align-items:center;gap:10px;font-weight:600}
+.status .dot{width:12px;height:12px;border-radius:50%;background:var(--muted);flex:none}
+.status.good .dot{background:var(--ok)} .status.bad .dot{background:var(--warn)}
+.status .msg{flex:1;min-width:0}
+.status .btn{min-height:40px;padding:8px 14px}
+
+/* GPS marker */
+.me{position:relative;width:26px;height:26px}
+.me .core{position:absolute;inset:4px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.35),0 1px 4px rgba(0,0,0,.5)}
+.me .cone{position:absolute;left:50%;top:50%;width:0;height:0;transform-origin:0 0}
+.me .cone::before{content:"";position:absolute;left:-22px;top:-58px;width:44px;height:52px;background:radial-gradient(ellipse at 50% 100%,rgba(26,115,232,.55),rgba(26,115,232,0) 70%);clip-path:polygon(50% 100%,0 0,100% 0)}
+
+/* Calibrate */
+#calibrate .panes{flex:1;display:flex;flex-direction:column;min-height:0}
+#calibrate .pane{position:relative;flex:1;display:flex;flex-direction:column;min-height:0;border-bottom:3px solid var(--ink)}
+#calibrate .pane:last-child{border-bottom:0}
+@media (orientation:landscape) and (min-width:700px){#calibrate .panes{flex-direction:row}#calibrate .pane{border-bottom:0;border-right:3px solid var(--ink)}}
+.cross{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;pointer-events:none;z-index:800}
+.cross::before,.cross::after{content:"";position:absolute;background:var(--pink);box-shadow:0 0 0 1.5px #fff}
+.cross::before{left:21px;top:0;width:2px;height:44px}
+.cross::after{top:21px;left:0;height:2px;width:44px}
+.panelabel{position:absolute;left:8px;top:8px;z-index:800;background:var(--ink);color:var(--bg);font-size:13px;font-weight:700;padding:4px 10px;border-radius:99px}
+.search{position:absolute;left:8px;right:8px;top:40px;z-index:800;display:flex;gap:6px}
+.search input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--surface)}
+.search .btn{min-height:40px;padding:6px 12px}
+.ghost{position:absolute;right:8px;top:8px;z-index:800;background:var(--surface);border-radius:10px;padding:4px 8px;font-size:13px;display:flex;align-items:center;gap:6px;box-shadow:var(--shadow)}
+.ghost input{width:90px}
+.calctl{padding:10px max(12px,var(--safe-r)) calc(10px + var(--safe-b)) max(12px,var(--safe-l));background:var(--surface);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.calctl .row{display:flex;gap:8px;flex-wrap:wrap}
+.calctl .row .btn{flex:1;min-width:130px}
+.calhelp{font-size:14px;color:var(--muted);margin:0}
+.calpts{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.num{background:var(--pink);color:#fff;border:2px solid #fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+
+/* Sheet */
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:1500;background:var(--surface);border-radius:18px 18px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.3);max-height:80%;display:flex;flex-direction:column}
+.sheet .hd{display:flex;align-items:center;padding:8px 8px 0 16px}
+.sheet .hd h2{flex:1;font-size:18px;margin:0}
+.sheet .bd{overflow:auto;padding:8px max(16px,var(--safe-r)) calc(16px + var(--safe-b)) max(16px,var(--safe-l));display:flex;flex-direction:column;gap:10px}
+.sheet textarea{width:100%;min-height:90px;border:1.5px solid var(--line);border-radius:10px;padding:10px;background:var(--bg);font-size:18px}
+.sheet label{font-weight:700;font-size:14px}
+.pdftext{white-space:pre-wrap;font-size:14px;background:var(--bg);border-radius:10px;padding:10px;user-select:text;-webkit-user-select:text}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:1400}
+.toast{position:fixed;left:50%;top:calc(70px + var(--safe-t));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;z-index:3000;font-weight:600;max-width:90%;box-shadow:var(--shadow)}
+.busy{position:fixed;inset:0;z-index:2500;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px}
+.leaflet-control-attribution{font-size:10px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<!-- LIBRARY -->
+<section id="library" class="screen">
+  <header class="bar">
+    <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#d6338a"/><path d="M32 12c-8 0-14 6-14 14 0 10 14 26 14 26s14-16 14-26c0-8-6-14-14-14z" fill="#fff"/><circle cx="32" cy="26" r="5" fill="#d6338a"/></svg>
+    <h1>Vinterkort</h1>
+    <button class="iconbtn" id="btnHelp" aria-label="How it works">Help</button>
+  </header>
+  <main>
+    <div class="list" id="mapList"></div>
+    <div class="empty" id="emptyMsg" hidden>
+      <h2>No maps yet</h2>
+      <p>Add the PDF work orders you get for salting. They are stored only on this phone.</p>
+      <ol>
+        <li><b>Add PDF</b> and pick a work order.</li>
+        <li><b>Calibrate it once:</b> line up 2–3 spots on the PDF with the same spots on a satellite map. Or walk to a corner and tap "I'm standing here".</li>
+        <li>Open it any time and the blue dot shows where you are, even without internet.</li>
+      </ol>
+    </div>
+  </main>
+  <div class="addbar">
+    <label class="btn" for="filePick">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add PDF
+    </label>
+    <input type="file" id="filePick" accept="application/pdf,.pdf" multiple hidden>
+  </div>
+</section>
+
+<!-- VIEWER -->
+<section id="viewer" class="screen" hidden>
+  <header class="bar">
+    <button class="iconbtn" id="viewBack" aria-label="Back to list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <h1 id="viewTitle">Map</h1>
+    <button class="iconbtn" id="viewMenu" aria-label="Map options"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
+  </header>
+  <div style="position:relative;flex:1;display:flex">
+    <div id="viewMap"></div>
+    <div class="fabs">
+      <button class="fab" id="fabNotes" aria-label="Notes and codes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
+      <button class="fab" id="fabCompass" aria-label="Show which way I face"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 5l3 7-3 7-3-7z" fill="currentColor" fill-opacity=".35"/></svg></button>
+      <button class="fab" id="fabFollow" aria-label="Center on me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+    </div>
+    <div class="status" id="status"><span class="dot"></span><span class="msg" id="statusMsg">Waiting for GPS…</span><button class="btn" id="statusCal" hidden>Calibrate</button></div>
+  </div>
+</section>
+
+<!-- CALIBRATE -->
+<section id="calibrate" class="screen" hidden>
+  <header class="bar">
+    <button class="iconbtn" id="calBack" aria-label="Cancel calibration"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    <h1>Calibrate map</h1>
+    <button class="iconbtn" id="calSave">Save</button>
+  </header>
+  <div class="panes">
+    <div class="pane"><div id="calA"></div><div class="cross"></div><span class="panelabel">Your PDF</span></div>
+    <div class="pane"><div id="calB"></div><div class="cross"></div><span class="panelabel">Real map</span>
+      <form class="search" id="calSearch"><input id="calQ" type="search" placeholder="Search address, e.g. Skanderborgvej 156" enterkeyhint="search"><button class="btn" type="submit">Go</button></form>
+      <label class="ghost" id="ghostWrap" hidden>PDF on top<input type="range" id="ghost" min="0" max="100" value="0"></label>
+    </div>
+  </div>
+  <div class="calctl">
+    <p class="calhelp" id="calHelp">Move both maps so the pink crosses sit on the <b>same spot</b> (a building corner, a path crossing). Then tap <b>Add point</b>. Use 2–3 spots far apart.</p>
+    <div class="row">
+      <button class="btn" id="calAdd">Add point</button>
+      <button class="btn secondary" id="calHere">I'm standing here</button>
+    </div>
+    <div class="row" style="align-items:center">
+      <span class="calpts" id="calPts" style="flex:1">No points yet.</span>
+      <button class="btn secondary" id="calUndo" style="flex:0;min-width:0">Undo</button>
+      <button class="btn secondary" id="calCopy" style="flex:0;min-width:0;white-space:nowrap" hidden>Copy from…</button>
+    </div>
+  </div>
+</section>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<!-- NOTES SHEET -->
+<div class="sheet" id="notesSheet" hidden>
+  <div class="hd"><h2>Notes and codes</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+  <div class="bd">
+    <label for="notesText">Your notes (padlock codes, gate info…)</label>
+    <textarea id="notesText" placeholder="e.g. Padlock by the bins: 1234"></textarea>
+    <label>Text found in the PDF</label>
+    <div class="pdftext" id="pdfText"></div>
+  </div>
+</div>
+
+<!-- MENU SHEET -->
+<div class="sheet" id="menuSheet" hidden>
+  <div class="hd"><h2>Map options</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+  <div class="bd">
+    <button class="btn secondary" id="mCal">Calibrate (line up with real map)</button>
+    <button class="btn secondary" id="mRotate">Rotate page 90°</button>
+    <button class="btn secondary" id="mWake">Keep screen on: off</button>
+    <button class="btn secondary" id="mRename">Rename</button>
+    <div id="renameRow" hidden style="display:flex;gap:8px"><input id="renameIn" style="flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:10px;background:var(--bg)"><button class="btn" id="renameOk">OK</button></div>
+    <button class="btn secondary" id="mDelete" style="color:var(--warn)">Delete this map</button>
+    <div id="delRow" hidden style="display:flex;gap:8px;align-items:center"><span style="flex:1">Delete for good?</span><button class="btn" id="delYes" style="background:var(--warn)">Delete</button></div>
+  </div>
+</div>
+
+<!-- COPY SHEET -->
+<div class="sheet" id="copySheet" hidden>
+  <div class="hd"><h2>Copy calibration from</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+  <div class="bd"><p class="calhelp">Use this when you get a new version of the same work order with the same map picture.</p><div class="list" id="copyList"></div></div>
+</div>
+
+<!-- HELP SHEET -->
+<div class="sheet" id="helpSheet" hidden>
+  <div class="hd"><h2>How it works</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+  <div class="bd">
+    <p><b>Add to home screen</b> first (Safari: Share → Add to Home Screen. Chrome: ⋮ → Add to Home screen / Install). Then it opens like an app and works offline. On Android you can also share a PDF straight to Vinterkort.</p>
+    <p><b>Calibrate once per PDF.</b> The PDFs are pictures without map coordinates, so the app needs to learn where the picture sits in the world. Line up 2–3 spots far apart (opposite corners of the area work best). More points = more accurate. After 2 points, slide "PDF on top" to check the PDF lines up with the satellite picture.</p>
+    <p><b>"I'm standing here"</b> works without internet: walk to a spot you can find on the PDF, put the top cross on it and tap the button. GPS is ±5 m, so pick spots far apart.</p>
+    <p><b>The blue dot</b> shows where you are. The light circle around it is how sure the GPS is. If you're off the map, the bar at the bottom tells you how far and which way.</p>
+    <p><b>Your PDFs stay on this phone.</b> Nothing is uploaded. Deleting the app's site data or the home screen app removes them.</p>
+  </div>
+</div>
+
+<div class="busy" id="busy" hidden>Working…</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="lib/leaflet.js"></script>
+<script src="lib/pdf.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
