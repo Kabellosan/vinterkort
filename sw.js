@@ -1,5 +1,5 @@
 /* Vinterkort service worker: offline app shell + Android "share to" inbox. */
-const VERSION = 'vk-v4';
+const VERSION = 'vk-v5';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',,
   'lib/leaflet.css', 'lib/leaflet.js', 'lib/pdf.min.js', 'lib/pdf.worker.min.js', 'lib/images/layers.png', 'lib/images/layers-2x.png'];
 

@@ -110,10 +110,27 @@ const dirName = (b) => DIRS[Math.round(b / 45) % 8];
 const fmtDist = (m) => (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m');
 
 /* ---------- PDF import ---------- */
-const ADDR_RE = /([A-ZÆØÅ][A-Za-zÆØÅæøåéü.\- ]{2,40}?\s\d{1,4}[A-Za-z]?)\s*,?\s+(\d{4})\s+([A-ZÆØÅ][a-zæøå]+(?:\s[A-ZÆØÅ][a-zæøå]+)?)/;
-function findAddress(text, fileName) {
-  const m = text.replace(/\s+/g, ' ').match(ADDR_RE);
-  if (m) return `${m[1].trim()}, ${m[2]} ${m[3]}`;
+// Danish address: "Bjørnholms Allé 2G, 8260 Viby J"
+const ADDR_RE = /(\p{Lu}[\p{L}.'\- ]{1,40}?\s\d{1,4}\s?[A-Za-z]?\b)\s*,?\s*(\d{4})\s+(\p{Lu}\p{L}*(?:\s\p{Lu}\p{L}*)?)/u;
+const fmtAddr = (m) => {
+  // Drop anything glued in front of the street name ("Østjysk Bolig - VINTER Bjørnholms Allé 2G").
+  const street = m[1].split(/\s{2,}|\s[-–]\s|,\s*/).pop().replace(/^(?:\p{Lu}{2,}\s+)+/u, '').trim();
+  return `${street}, ${m[2]} ${m[3]}`;
+};
+// cells: [{s, x, y}] text pieces with page position (y grows upwards). Prefer the "Leveringsadresse" field.
+function findAddress(text, cells) {
+  cells = cells || text.split('\n').map((l, i) => ({ s: l, x: 0, y: -i * 20 }));
+  const lab = cells.find((c) => /leverings\s*adresse|leveringssted|adresse\s*:/i.test(c.s));
+  if (lab) {
+    const after = lab.s.replace(/^.*?(leverings\s*adresse|leveringssted|adresse)\s*:?/i, '').trim();
+    const below = cells.filter((c) => c !== lab && c.x > lab.x - 40 && c.x < lab.x + 300 && c.y < lab.y && c.y > lab.y - 45)
+      .sort((a, b) => b.y - a.y || a.x - b.x).map((c) => c.s);
+    const cand = [after, ...below].filter(Boolean).join('  ').trim();
+    const m = cand.match(ADDR_RE);
+    if (m) return fmtAddr(m);
+    if (/\d/.test(cand)) return cand.slice(0, 80);
+  }
+  for (const c of cells) { const m = c.s.match(ADDR_RE); if (m && !/vagt|tlf|telefon/i.test(m[0])) return fmtAddr(m); }
   const a = text.match(/Afdeling:\s*([^\n]+)/i);
   if (a) return a[1].trim();
   return '';
@@ -122,11 +139,42 @@ function niceName(fileName, address) {
   if (address) return address.slice(0, 80);
   return fileName.replace(/\.pdf$/i, '').replace(/^(\d{8,}_)?\d+-/, '').slice(0, 80) || 'Map';
 }
+// Rebuild the page's text as lines and cells (pieces separated by a wide gap), using positions.
 async function pageText(page) {
   const tc = await page.getTextContent();
-  let s = '';
-  for (const it of tc.items) { s += it.str; s += it.hasEOL ? '\n' : (it.str ? ' ' : ''); }
-  return s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  const items = tc.items.filter((it) => it.str && it.str.trim() && Math.abs(it.transform[1]) < 0.01)
+    .map((it) => ({ s: it.str.normalize('NFC'), x: it.transform[4], y: it.transform[5], w: it.width }));
+  // Word puts many fields (customer, address, notes on the map) in text annotations, not the page text.
+  try {
+    for (const an of await page.getAnnotations()) {
+      const str = (an.contentsObj && an.contentsObj.str) || (typeof an.contents === 'string' ? an.contents : '') || (an.fieldValue && typeof an.fieldValue === 'string' ? an.fieldValue : '');
+      if (!str || !str.trim() || !an.rect) continue;
+      const lns = str.normalize('NFC').split(/\r\n|\r|\n/).map((l) => l.trim());
+      lns.forEach((l, i) => { if (l) items.push({ s: l, x: an.rect[0], y: an.rect[3] - 4 - i * 12, w: 1000, annot: true }); });
+    }
+  } catch (e) {}
+  items.sort((a, b) => b.y - a.y || a.x - b.x);
+  const lines = [];
+  for (const it of items) {
+    const ln = lines.find((l) => Math.abs(l.y - it.y) < 3);
+    if (ln) ln.items.push(it); else lines.push({ y: it.y, items: [it] });
+  }
+  const cells = [];
+  const out = [];
+  for (const ln of lines.sort((a, b) => b.y - a.y)) {
+    ln.items.sort((a, b) => a.x - b.x);
+    let cur = null; const parts = [];
+    for (const it of ln.items) {
+      if (cur && !it.annot && !cur.annot && it.x - (cur.x + cur.w) < 12) { cur.s += (it.x - (cur.x + cur.w) > 1.5 ? ' ' : '') + it.s; cur.w = it.x + it.w - cur.x; }
+      else { cur = { ...it }; parts.push(cur); }
+    }
+    parts.forEach((p) => { p.s = p.s.replace(/\s+/g, ' ').trim(); cells.push(p); });
+    out.push(parts.map((p) => p.s).join('    '));
+  }
+  // Rotated text (sideways pages) is kept too, in reading order from pdf.js.
+  const rot = tc.items.filter((it) => it.str && it.str.trim() && Math.abs(it.transform[1]) >= 0.01).map((it) => it.str.normalize('NFC'));
+  const text = (out.join('\n') + (rot.length ? '\n\n' + rot.join(' ') : '')).trim();
+  return { text, cells };
 }
 async function renderPage(page, maxSide = 3000) {
   const v1 = page.getViewport({ scale: 1 });
@@ -153,9 +201,9 @@ async function importFile(file, route, orderStart) {
   const ids = [];
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
-    const text = await pageText(page);
+    const { text, cells } = await pageText(page);
     const r = await renderPage(page);
-    const address = findAddress(text, file.name || '');
+    const address = findAddress(text, cells);
     const base = niceName(file.name || '', address);
     const m = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
@@ -541,7 +589,7 @@ async function openCalibrate() {
     const sib = (await DB.all()).filter((m) => m.calib && m.route && m.route === cur.route);
     if (sib.length) { const s0 = sib[0]; calB.setView(pxToGeo(s0.calib, s0.w / 2, s0.h / 2), 15); }
     else calB.setView(VIBY, 15);
-    const q = cur.address || addressFromFileName(cur.fileName || '');
+    const q = cur.address || findAddress(cur.text || '') || addressFromFileName(cur.fileName || '');
     $('calQ').value = q;
     if (q) geocode(q);
     else toast('No address found in this PDF. Search for it, or pan the map by hand.', 4000);
@@ -648,6 +696,17 @@ async function geocode(q) {
   const street = q.split(',')[0].trim();
   if (street !== q) { variants.push(street + ', Aarhus'); variants.push(street); }
   try {
+    // Danish address register first (exact for Danish addresses), then OpenStreetMap.
+    try {
+      const r = await fetch('https://api.dataforsyningen.dk/adgangsadresser/autocomplete?per_side=1&q=' + encodeURIComponent(q));
+      const j = r.ok ? await r.json() : [];
+      const h = j && j[0], d = h && (h.adgangsadresse || h.data);
+      if (d && d.x && d.y) {
+        calB.setView([d.y, d.x], 18);
+        toast('Found: ' + (h.tekst || q), 4000);
+        return true;
+      }
+    } catch (e) {}
     for (const v of variants) {
       const u = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dk&viewbox=9.95,56.25,10.35,56.05&q=' + encodeURIComponent(v);
       const r = await fetch(u, { headers: { 'Accept-Language': 'da,en' } });
