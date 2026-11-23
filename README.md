@@ -5,6 +5,7 @@ Phone web app for winter salting rounds: open a work-order PDF (map screenshot w
 Open: https://kabellosan.github.io/vinterkort/
 
 - `index.html`, `app.js`: the app
+- `drive.js`: Google Drive sync (one folder = one route; calibrations in `vinterkort-calibrations.json` in that folder)
 - `sw.js`, `manifest.webmanifest`: offline support, install, Android "share to"
 - `lib/`: Leaflet 1.9.4 and pdf.js 3.11.174 (vendored)
 

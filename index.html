@@ -93,6 +93,9 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
 .status .msg{flex:1;min-width:0}
 .status .btn{min-height:40px;padding:8px 14px}
 
+.nbanner{position:absolute;left:calc(10px + var(--safe-l));right:calc(10px + var(--safe-r));top:10px;z-index:950;display:flex;gap:10px;align-items:flex-start;background:#fff4c2;color:#3a2a00;border:2px solid #e0b400;border-radius:14px;padding:10px 4px 10px 12px;box-shadow:var(--shadow);font-weight:600;max-height:40%;overflow:auto;cursor:pointer}
+.nbanner svg{flex:none;margin-top:2px}.nbanner .t{flex:1;min-width:0}.nbanner .iconbtn{min-width:40px;height:40px;margin-top:-6px}
+
 /* GPS marker */
 .me{position:relative;width:26px;height:26px}
 .me .core{position:absolute;inset:4px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.35),0 1px 4px rgba(0,0,0,.5)}
@@ -143,6 +146,7 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   <header class="bar">
     <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#d6338a"/><path d="M32 12c-8 0-14 6-14 14 0 10 14 26 14 26s14-16 14-26c0-8-6-14-14-14z" fill="#fff"/><circle cx="32" cy="26" r="5" fill="#d6338a"/></svg>
     <h1>Vinterkort</h1>
+    <button class="iconbtn" id="btnDrive" aria-label="Sync from Google Drive">Drive</button>
     <button class="iconbtn" id="btnHelp" aria-label="How it works">Help</button>
   </header>
   <main>
@@ -179,6 +183,7 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   </header>
   <div style="position:relative;flex:1;display:flex">
     <div id="viewMap"></div>
+    <div class="nbanner" id="notesBanner" role="button" tabindex="0" hidden><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><div class="t" id="notesBannerText"></div><button class="iconbtn" id="notesBannerClose" aria-label="Hide notes">✕</button></div>
     <div class="fabs">
       <button class="fab" id="fabNotes" aria-label="Notes and codes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
       <button class="fab" id="fabCompass" aria-label="Show which way I face"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 5l3 7-3 7-3-7z" fill="currentColor" fill-opacity=".35"/></svg></button>
@@ -260,6 +265,17 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   </form>
 </div>
 
+<!-- DRIVE SHEET -->
+<div class="sheet" id="driveSheet" hidden>
+  <div class="hd"><h2>Sync from Google Drive</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+  <div class="bd">
+    <p class="calhelp">One folder = one route. New PDFs in it are added to the route, and calibrations are kept in a small file in the same folder, so you only line up each address once.</p>
+    <div id="driveRecentWrap" hidden><label>Recent</label><div class="list" id="driveRecent"></div></div>
+    <label id="driveMsg">Signing in…</label>
+    <div class="list" id="driveList"></div>
+  </div>
+</div>
+
 <!-- HELP SHEET -->
 <div class="sheet" id="helpSheet" hidden>
   <div class="hd"><h2>How it works</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
@@ -269,7 +285,8 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
     <p><b>Calibrate once per PDF.</b> The PDFs are pictures without map coordinates, so the app needs to learn where the picture sits in the world. Line up 2–3 spots far apart (opposite corners of the area work best). More points = more accurate. After 2 points, slide "PDF on top" to check the PDF lines up with the satellite picture.</p>
     <p><b>"I'm standing here"</b> works without internet: walk to a spot you can find on the PDF, put the top cross on it and tap the button. GPS is ±5 m, so pick spots far apart.</p>
     <p><b>The blue dot</b> shows where you are. The light circle around it is how sure the GPS is. If you're off the map, the bar at the bottom tells you how far and which way.</p>
-    <p><b>Your PDFs stay on this phone.</b> Nothing is uploaded. Deleting the app's site data or the home screen app removes them.</p>
+    <p><b>Google Drive.</b> Tap <b>Drive</b>, sign in and pick a folder (for example H4). Its PDFs become a route, and tapping the folder again later only fetches new ones. Calibrations you save are written to <i>vinterkort-calibrations.json</i> in that folder, so they come back on a new phone and are reused when the same address shows up again. Maps marked "First guess: check it" were calibrated for you from the address: open them, slide "PDF on top" and nudge if needed.</p>
+    <p><b>Your PDFs stay on this phone and in your own Drive.</b> Nothing is sent anywhere else. Deleting the app's site data or the home screen app removes the phone copy.</p>
   </div>
 </div>
 
@@ -279,5 +296,6 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
 <script src="lib/leaflet.js"></script>
 <script src="lib/pdf.min.js"></script>
 <script src="app.js"></script>
+<script src="drive.js"></script>
 </body>
 </html>

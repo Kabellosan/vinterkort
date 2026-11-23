@@ -195,7 +195,7 @@ async function makeThumb(src) {
   t.getContext('2d').drawImage(src, 0, 0, t.width, t.height);
   return new Promise((r) => t.toBlob(r, 'image/jpeg', 0.8));
 }
-async function importFile(file, route, orderStart) {
+async function importFile(file, route, orderStart, extra) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const ids = [];
@@ -212,6 +212,7 @@ async function importFile(file, route, orderStart) {
       image: r.blob, thumb: r.thumb, w: r.w, h: r.h,
       text, address, notes: '', calib: null, pts: [],
       route: route || '', order: (orderStart || 0) + ids.length,
+      ...(extra || {}), page: p,
     };
     await DB.put(m); ids.push(m.id);
   }
@@ -308,7 +309,7 @@ async function renderLibrary() {
       b.innerHTML = (route ? `<span class="stopno">${i + 1}</span>` : '') +
         `<img alt="" src="${blobUrl('t' + m.id, m.thumb || m.image)}"><div class="t"><div class="n">${esc(m.name)}</div>` +
         `<div class="s">${esc(m.address && m.address !== m.name ? m.address : m.fileName || '')}</div>` +
-        (m.calib ? '<span class="pill ok">GPS ready</span>' : '<span class="pill no">Needs calibration</span>') + '</div>';
+        (m.calib ? (m.calibFrom === 'claude' ? '<span class="pill no">First guess: check it</span>' : '<span class="pill ok">GPS ready</span>') : '<span class="pill no">Needs calibration</span>') + '</div>';
       b.onclick = () => openViewer(m.id);
       row.appendChild(b);
       if (editing) {
@@ -396,6 +397,7 @@ async function openViewer(id) {
   setFollow(true);
   startGPS();
   updateStatus();
+  showNotesBanner();
   if (lastFix) onFix(lastFix);
 }
 function closeViewer() { releaseWake(); cur = null; show('library'); renderLibrary(); }
@@ -458,7 +460,7 @@ let statusAction = null;
 function setStatus(kind, msg, action, label) {
   const s = $('status'); s.className = 'status ' + (kind || '');
   $('statusMsg').textContent = msg;
-  if (action === true) { action = () => openCalibrate(); label = 'Calibrate'; }
+  if (action === true) { action = () => openCalibrate(); label = label || 'Calibrate'; }
   statusAction = action || null;
   $('statusCal').hidden = !action; if (action) $('statusCal').textContent = label;
 }
@@ -469,7 +471,8 @@ function updateStatus() {
   const { latitude: lat, longitude: lon, accuracy } = lastFix.coords;
   const [x, y] = geoToPx(cur.calib, lat, lon);
   if (x >= 0 && y >= 0 && x <= cur.w && y <= cur.h) {
-    setStatus(accuracy <= 15 ? 'good' : 'bad', `You are on this map · GPS ±${Math.round(accuracy)} m`);
+    if (cur.calibFrom === 'claude') setStatus('bad', `On this map · GPS ±${Math.round(accuracy)} m · first guess, check the dot`, true, 'Fix');
+    else setStatus(accuracy <= 15 ? 'good' : 'bad', `You are on this map · GPS ±${Math.round(accuracy)} m`);
   } else {
     const other = mapAt(libMaps.filter((m) => m.id !== cur.id), lat, lon);
     if (other) {
@@ -513,9 +516,40 @@ $('fabCompass').onclick = async () => {
 };
 
 /* notes */
+// Hand-written hints on the work order (key box codes, "remember the stairwell"…): everything in the PDF's
+// text except the standard header and colour legend.
+const LEGEND_RE = /^=|hånd\b|kompakttraktor|centrifugal|stor traktor|skellinje|indgange|døre\/porte|teknisk udstyr|elstander|belægning som|^(kunde|leveringsadresse|leveringssted)\b/i;
+function pdfNotes(m) {
+  const lines = String(m.text || '').split('\n');
+  const out = [];
+  const ki = lines.findIndex((l) => /^\s*kunde\s*:/i.test(l));
+  const customer = ki >= 0 && lines[ki + 1] ? lines[ki + 1].split(/\s{3,}/)[0].trim() : '';
+  const street = (m.address || '').split(',')[0].trim().toLowerCase();
+  for (const l of lines) for (let c of l.split(/\s{3,}/)) {
+    c = c.trim();
+    if (!c || c.length < 3 || LEGEND_RE.test(c)) continue;
+    if (customer && c === customer) continue;
+    if (street && c.toLowerCase().includes(street)) continue;
+    if (/^[\d\s.,-]+$/.test(c)) continue; // stray numbers
+    out.push(c);
+  }
+  return [...new Set(out)];
+}
+const notesSeen = new Set();
+function showNotesBanner() {
+  const el = $('notesBanner');
+  const lines = pdfNotes(cur);
+  const mine = (cur.notes || '').trim();
+  if ((!lines.length && !mine) || notesSeen.has(cur.id)) { el.hidden = true; return; }
+  $('notesBannerText').innerHTML = (mine ? `<div><b>${esc(mine)}</b></div>` : '') + lines.map((l) => `<div>${esc(l)}</div>`).join('');
+  el.hidden = false;
+}
+$('notesBannerClose').onclick = (e) => { e.stopPropagation(); notesSeen.add(cur.id); $('notesBanner').hidden = true; };
+$('notesBanner').onclick = () => $('fabNotes').click();
 $('fabNotes').onclick = () => {
   $('notesText').value = cur.notes || '';
-  $('pdfText').textContent = cur.text || '(No text in this PDF)';
+  const hints = pdfNotes(cur);
+  $('pdfText').textContent = (hints.length ? hints.join('\n') + '\n\n— All text in the PDF —\n' : '') + (cur.text || '(No text in this PDF)');
   openSheet('notesSheet');
 };
 $('notesText').oninput = debounce(async () => { cur.notes = $('notesText').value; await DB.put(cur); }, 400);
@@ -682,8 +716,9 @@ $('calBack').onclick = () => openViewer(cur.id);
 $('calSave').onclick = async () => {
   const c = fitCalib(calPts);
   if (!c) return;
-  cur.pts = calPts; cur.calib = c;
+  cur.pts = calPts; cur.calib = c; cur.calibFrom = 'me'; cur.calibDirty = true;
   await DB.put(cur);
+  if (window.vkDrive) vkDrive.pushSoon(cur);
   toast('Calibration saved');
   openViewer(cur.id);
 };

@@ -1,6 +1,6 @@
 /* Vinterkort service worker: offline app shell + Android "share to" inbox. */
-const VERSION = 'vk-v5';
-const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',,
+const VERSION = 'vk-v6';
+const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'drive.js',
   'lib/leaflet.css', 'lib/leaflet.js', 'lib/pdf.min.js', 'lib/pdf.worker.min.js', 'lib/images/layers.png', 'lib/images/layers-2x.png'];
 
 self.addEventListener('install', (e) => {
@@ -25,8 +25,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (e.request.method !== 'GET') return;
-  // Map tiles and address search: network only (calibration needs internet anyway).
-  if (/arcgisonline|openstreetmap/.test(url.hostname)) return;
+  if (url.origin !== self.location.origin) return; // map tiles, address search, Google sign-in and Drive: network only
   // App files: network first (so updates show up right away), cache when offline.
   e.respondWith(caches.open(VERSION).then(async (c) => {
     try {
