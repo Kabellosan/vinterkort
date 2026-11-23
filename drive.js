@@ -59,7 +59,7 @@ const vkDrive = (() => {
   }
 
   /* ---- calibration files ---- */
-  const norm = (s) => String(s || '').toLowerCase().normalize('NFC').replace(/\.pdf$/, '').replace(/^\d{8,}_\d+-/, '').replace(/[^a-z0-9æøå]/g, '');
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFC').replace(/\.pdf$/, '').replace(/^\d{8,}_/, '').replace(/_copy$|\s*\(\d+\)$/, '').replace(/[^a-z0-9æøå]/g, '');
   async function readJson(folderId, name) {
     const f = (await list(`${q(folderId)} in parents and name = ${q(name)} and trashed = false`, 'files(id,name,modifiedTime)', 'modifiedTime desc'))[0];
     if (!f) return { file: null, data: { version: 1, maps: [] } };
@@ -73,11 +73,18 @@ const vkDrive = (() => {
       by: 'app', updated: new Date().toISOString(),
     };
   }
+  // Same Drive file first, then same file name (minus the date prefix), then same address. An address
+  // only counts when one map in the file has it: some places have several maps (e.g. a north and a south one).
   function findEntry(entries, m) {
-    const page = m.page || 1;
-    return entries.find((e) => e.driveId && e.driveId === m.driveId && (e.page || 1) === page) ||
-      (m.address && entries.find((e) => e.address && norm(e.address) === norm(m.address) && (e.page || 1) === page)) ||
-      (m.fileName && entries.find((e) => e.fileName && norm(e.fileName) === norm(m.fileName) && (e.page || 1) === page)) || null;
+    const page = m.page || 1, pg = entries.filter((e) => (e.page || 1) === page);
+    const byId = m.driveId && pg.find((e) => e.driveId === m.driveId);
+    if (byId) return byId;
+    const sameAddr = (e) => !m.address || !e.address || norm(e.address) === norm(m.address);
+    const byName = m.fileName && pg.filter((e) => e.fileName && norm(e.fileName) === norm(m.fileName) && sameAddr(e));
+    if (byName && byName.length) return byName[byName.length - 1];
+    const byAddr = m.address ? pg.filter((e) => e.address && norm(e.address) === norm(m.address)) : [];
+    const kinds = new Set(byAddr.map((e) => norm(e.fileName) || e.driveId));
+    return byAddr.length && kinds.size === 1 ? byAddr[byAddr.length - 1] : null;
   }
   // Apply a stored calibration to a map. Points are stored as fractions of the image, so a re-rendered
   // copy of the same PDF fits too. Returns true when the map got a calibration.
