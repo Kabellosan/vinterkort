@@ -625,14 +625,115 @@ async function openCalibrate() {
     else calB.setView(VIBY, 15);
     const q = cur.address || findAddress(cur.text || '') || addressFromFileName(cur.fileName || '');
     $('calQ').value = q;
-    if (q) geocode(q);
-    else toast('No address found in this PDF. Search for it, or pan the map by hand.', 4000);
+    if (!q) toast('No address found in this PDF. Search for it, or pan the map by hand.', 4000);
   }
   const others = (await DB.all()).filter((m) => m.id !== cur.id && m.calib);
   $('calCopy').hidden = others.length === 0;
+  fit = null;
+  // New maps and first guesses start in drag-to-fit; maps you calibrated with points open in point mode.
+  const pointMode = cur.calib && cur.calibFrom !== 'claude' && (cur.pts || []).some((p) => p.src !== 'fit');
+  setFitMode(!pointMode);
   setTimeout(() => { calA.invalidateSize(); calB.invalidateSize(); }, 50);
   refreshCal();
+  if (!cur.calib && $('calQ').value) geocode($('calQ').value);
 }
+
+// The address search moved the map: bring an untouched PDF along, sized to the new view.
+function onGeocoded() { if (fitMode && !fitTouched) { fit = null; calPts = []; initFit(); } }
+
+/* ---------- drag to fit: move, pinch and twist the PDF on top of the satellite map ---------- */
+// fit = { lat, lon, s (metres per PDF pixel), th (radians, clockwise) } for the PDF's centre.
+let fit = null, fitMode = false, fitTouched = false, fitMoveMap = false;
+function fitToPts(f) {
+  const out = [];
+  for (const [x, y] of [[0, 0], [cur.w, 0], [cur.w, cur.h], [0, cur.h]]) {
+    const dx = x - cur.w / 2, dy = y - cur.h / 2;
+    const e = f.s * (dx * Math.cos(f.th) - dy * Math.sin(f.th));
+    const so = f.s * (dx * Math.sin(f.th) + dy * Math.cos(f.th));
+    const [lat, lon] = fromMetres(e, -so, f.lat, f.lon);
+    out.push({ x, y, lat, lon, src: 'fit' });
+  }
+  return out;
+}
+function initFit() {
+  const c = fitCalib(calPts);
+  if (c) {
+    const [lat, lon] = pxToGeo(c, cur.w / 2, cur.h / 2);
+    const [la2, lo2] = pxToGeo(c, cur.w / 2 + 100, cur.h / 2);
+    const [e, n] = toMetres(la2, lo2, lat, lon);
+    fit = { lat, lon, s: Math.hypot(e, n) / 100, th: Math.atan2(-n, e) };
+  } else {
+    // Centre of the map view, PDF about 70% of the view wide, north up.
+    const g = calB.getCenter(), sz = calB.getSize();
+    const mPerScreenPx = 40075016.686 * Math.cos(g.lat * D2R) / (256 * Math.pow(2, calB.getZoom()));
+    fit = { lat: g.lat, lon: g.lng, s: (sz.x * 0.7 * mPerScreenPx) / cur.w, th: 0 };
+  }
+  applyFit(true);
+}
+function applyFit(full) {
+  calPts = fitToPts(fit);
+  if (full) refreshCal(); else if (ghostLayer) ghostLayer.update();
+}
+function setFitMode(on) {
+  fitMode = on; fitTouched = false;
+  $('calibrate').classList.toggle('fitting', on);
+  $('calFitToggle').textContent = on ? 'Use points' : 'Drag to fit';
+  setFitMoveMap(false);
+  if (on) {
+    $('ghost').value = Math.max(+$('ghost').value || 0, 55);
+    setTimeout(() => { calB.invalidateSize(); if (!fit) initFit(); else applyFit(true); }, 60);
+  } else {
+    setTimeout(() => { calA.invalidateSize(); calB.invalidateSize(); refreshCal(); }, 60);
+  }
+}
+function setFitMoveMap(on) {
+  fitMoveMap = on;
+  $('fitLayer').style.pointerEvents = on ? 'none' : 'auto';
+  $('fitMovePdf').classList.toggle('on', !on); $('fitMoveMap').classList.toggle('on', on);
+}
+$('calFitToggle').onclick = () => setFitMode(!fitMode);
+$('fitMovePdf').onclick = () => setFitMoveMap(false);
+$('fitMoveMap').onclick = () => setFitMoveMap(true);
+$('fitRotL').onclick = () => { if (!fit) return; fit.th -= 1 * D2R; fitTouched = true; applyFit(true); };
+$('fitRotR').onclick = () => { if (!fit) return; fit.th += 1 * D2R; fitTouched = true; applyFit(true); };
+(() => {
+  const ptrs = new Map(); let start = null;
+  const layer = $('fitLayer');
+  const pos = (e) => { const r = layer.getBoundingClientRect(); return L.point(e.clientX - r.left, e.clientY - r.top); };
+  function snapshot() {
+    const ps = [...ptrs.values()];
+    const c = calB.latLngToContainerPoint([fit.lat, fit.lon]);
+    const mid = ps.length > 1 ? ps[0].add(ps[1]).divideBy(2) : ps[0];
+    const d = ps.length > 1 ? ps[1].subtract(ps[0]) : null;
+    return { c, mid, dist: d ? Math.hypot(d.x, d.y) : 0, ang: d ? Math.atan2(d.y, d.x) : 0, s: fit.s, th: fit.th, n: ps.length };
+  }
+  layer.addEventListener('pointerdown', (e) => {
+    if (!fit) return;
+    layer.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, pos(e)); start = snapshot(); e.preventDefault();
+  });
+  layer.addEventListener('pointermove', (e) => {
+    if (!ptrs.has(e.pointerId) || !start) return;
+    ptrs.set(e.pointerId, pos(e));
+    const now = snapshot(); if (now.n !== start.n) { start = now; return; }
+    let k = 1, da = 0;
+    if (now.n > 1 && start.dist > 10) { k = now.dist / start.dist; da = now.ang - start.ang; }
+    // Keep the PDF point under the fingers' midpoint under it: C' = M' + R(da)·k·(C − M)
+    const v = start.c.subtract(start.mid);
+    const rv = L.point(v.x * Math.cos(da) - v.y * Math.sin(da), v.x * Math.sin(da) + v.y * Math.cos(da)).multiplyBy(k);
+    const ll = calB.containerPointToLatLng(now.mid.add(rv));
+    fit.lat = ll.lat; fit.lon = ll.lng; fit.s = start.s / k; fit.th = start.th + da;
+    fitTouched = true; applyFit(false);
+  });
+  const end = (e) => { if (!ptrs.delete(e.pointerId)) return; start = ptrs.size ? snapshot() : null; if (!ptrs.size && fit) applyFit(true); };
+  layer.addEventListener('pointerup', end); layer.addEventListener('pointercancel', end);
+  // Mouse wheel / trackpad: zoom the PDF around the cursor (desktop).
+  layer.addEventListener('wheel', (e) => {
+    if (!fit) return; e.preventDefault();
+    const k = Math.exp(-e.deltaY / 500), m = pos(e), c = calB.latLngToContainerPoint([fit.lat, fit.lon]);
+    const ll = calB.containerPointToLatLng(m.add(c.subtract(m).multiplyBy(k)));
+    fit.lat = ll.lat; fit.lon = ll.lng; fit.s /= k; fitTouched = true; applyFit(true);
+  }, { passive: false });
+})();
 function makeGhost(map) {
   const img = document.createElement('img');
   img.src = blobUrl('ghost', cur.image);
@@ -655,13 +756,16 @@ $('ghost').oninput = () => { if (ghostLayer) ghostLayer.img.style.opacity = $('g
 function refreshCal() {
   calMarkers.forEach((m) => m.remove()); calMarkers = [];
   calPts.forEach((p, i) => {
+    if (p.src === 'fit') return;
     const icon = L.divIcon({ className: '', html: `<div class="num">${i + 1}</div>`, iconSize: [24, 24], iconAnchor: [12, 12] });
     calMarkers.push(L.marker(imgLL(cur, p.x, p.y), { icon, interactive: false }).addTo(calA));
     calMarkers.push(L.marker([p.lat, p.lon], { icon, interactive: false }).addTo(calB));
   });
   const c = fitCalib(calPts);
   let msg;
-  if (!calPts.length) msg = 'No points yet. You need at least 2.';
+  if (fitMode) msg = fitTouched ? 'Looks right? Tap Save. Tip: use “Move map” to look around.' : 'Drag the PDF onto the right spot. Pinch to resize, twist to turn.';
+  else if (calPts.length && calPts.every((p) => p.src === 'fit')) msg = 'Lined up by dragging. Add points to fine-tune, or Save.';
+  else if (!calPts.length) msg = 'No points yet. You need at least 2.';
   else if (calPts.length === 1) msg = '1 point. Add at least one more, far from the first.';
   else if (!c) msg = 'Points are too close together. Add one further away.';
   else {
@@ -685,6 +789,7 @@ $('calAdd').onclick = () => {
   if (x < 0 || y < 0 || x > cur.w || y > cur.h) { toast('Put the top cross on the PDF map first'); return; }
   const g = calB.getCenter();
   calPts.push({ x, y, lat: g.lat, lon: g.lng, src: 'map' });
+  if (calPts.filter((p) => p.src !== 'fit').length >= 2) calPts = calPts.filter((p) => p.src !== 'fit');
   refreshCal();
   toast(`Point ${calPts.length} added`, 1500);
 };
@@ -706,12 +811,13 @@ $('calHere').onclick = () => {
     if (!best) { toast(err && err.code === 1 ? 'Location is blocked for this site' : 'No GPS fix. Try again outside.'); return; }
     const { latitude: lat, longitude: lon, accuracy } = best.coords;
     calPts.push({ x, y, lat, lon, src: 'gps', acc: accuracy });
+    if (calPts.filter((p) => p.src !== 'fit').length >= 2) calPts = calPts.filter((p) => p.src !== 'fit');
     calB.setView([lat, lon], Math.max(calB.getZoom(), 17));
     refreshCal();
     toast(`Point ${calPts.length} added (GPS ±${Math.round(accuracy)} m)`);
   }
 };
-$('calUndo').onclick = () => { calPts.pop(); refreshCal(); };
+$('calUndo').onclick = () => { if (fitMode) { fit = null; initFit(); fitTouched = false; refreshCal(); return; } calPts.pop(); refreshCal(); };
 $('calBack').onclick = () => openViewer(cur.id);
 $('calSave').onclick = async () => {
   const c = fitCalib(calPts);
@@ -722,7 +828,11 @@ $('calSave').onclick = async () => {
   toast('Calibration saved');
   openViewer(cur.id);
 };
-$('calSearch').onsubmit = (e) => { e.preventDefault(); const q = $('calQ').value.trim(); if (q) geocode(q); $('calQ').blur(); };
+$('calSearch').onsubmit = (e) => {
+  e.preventDefault(); const q = $('calQ').value.trim(); $('calQ').blur();
+  // In drag-to-fit, bring the PDF along to the place that was found.
+  if (q) geocode(q).then((ok) => { if (ok && fitMode && fit) { const g = calB.getCenter(); fit.lat = g.lat; fit.lon = g.lng; applyFit(true); } });
+};
 // Try a few spellings of the address, preferring results around Aarhus.
 async function geocode(q) {
   const variants = [q];
@@ -737,7 +847,7 @@ async function geocode(q) {
       const j = r.ok ? await r.json() : [];
       const h = j && j[0], d = h && (h.adgangsadresse || h.data);
       if (d && d.x && d.y) {
-        calB.setView([d.y, d.x], 18);
+        calB.setView([d.y, d.x], 18); onGeocoded();
         toast('Found: ' + (h.tekst || q), 4000);
         return true;
       }
@@ -747,7 +857,7 @@ async function geocode(q) {
       const r = await fetch(u, { headers: { 'Accept-Language': 'da,en' } });
       const j = await r.json();
       if (j && j[0]) {
-        calB.setView([+j[0].lat, +j[0].lon], 18);
+        calB.setView([+j[0].lat, +j[0].lon], 18); onGeocoded();
         toast('Found: ' + j[0].display_name.split(',').slice(0, 3).join(','), 4000);
         return true;
       }
@@ -773,7 +883,7 @@ $('calCopy').onclick = async () => {
     b.onclick = () => {
       const sx = cur.w / m.w, sy = cur.h / m.h;
       calPts = m.pts.map((p) => ({ ...p, x: p.x * sx, y: p.y * sy }));
-      closeSheet(); refreshCal();
+      closeSheet(); fit = null; if (fitMode) initFit(); refreshCal();
       const [lat, lon] = pxToGeo(fitCalib(calPts), cur.w / 2, cur.h / 2); calB.setView([lat, lon], 18);
       toast('Copied. Check with the "PDF on top" slider, then Save.');
     };

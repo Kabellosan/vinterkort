@@ -122,6 +122,15 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
 .calctl .row .btn{flex:1;min-width:130px}
 .calhelp{font-size:14px;color:var(--muted);margin:0}
 .calpts{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+#fitLayer{display:none;position:absolute;inset:0;z-index:700;touch-action:none;cursor:move}
+.fitbar{display:none;position:absolute;left:8px;bottom:8px;z-index:800;gap:6px;align-items:center}
+.seg{display:flex;background:var(--surface);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+.seg button{border:0;background:none;padding:10px 12px;min-height:44px;font-weight:700;cursor:pointer}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.fitbar .rot{background:var(--surface);box-shadow:var(--shadow);font-size:22px;color:var(--ink)}
+.fitting #fitLayer{display:block}.fitting .fitbar{display:flex}
+.fitting .panes .pane:first-child,.fitting .pane .cross,.fitting .ptsonly{display:none!important}
+.fitonly{display:none}.fitting .fitonly{display:block}
 .num{background:var(--pink);color:#fff;border:2px solid #fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.5)}
 
 /* Sheet */
@@ -203,20 +212,24 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   <div class="panes">
     <div class="pane"><div id="calA"></div><div class="cross"></div><span class="panelabel">Your PDF</span></div>
     <div class="pane"><div id="calB"></div><div class="cross"></div><span class="panelabel">Real map</span>
+      <div id="fitLayer" aria-label="Drag, pinch and twist the PDF"></div>
+      <div class="fitbar"><div class="seg"><button class="on" id="fitMovePdf">Move PDF</button><button id="fitMoveMap">Move map</button></div><button class="iconbtn rot" id="fitRotL" aria-label="Turn PDF left">⟲</button><button class="iconbtn rot" id="fitRotR" aria-label="Turn PDF right">⟳</button></div>
       <form class="search" id="calSearch"><input id="calQ" type="search" placeholder="Search address, e.g. Skanderborgvej 156" enterkeyhint="search"><button class="btn" type="submit">Go</button></form>
       <label class="ghost" id="ghostWrap" hidden>PDF on top<input type="range" id="ghost" min="0" max="100" value="0"></label>
     </div>
   </div>
   <div class="calctl">
-    <p class="calhelp" id="calHelp">Move both maps so the pink crosses sit on the <b>same spot</b> (a building corner, a path crossing). Then tap <b>Add point</b>. Use 2–3 spots far apart.</p>
-    <div class="row">
+    <p class="calhelp fitonly">Drag the see-through PDF until roads and buildings line up. Pinch to resize, twist (or ⟲ ⟳) to turn. It doesn't need to be perfect: a few metres is fine.</p>
+    <p class="calhelp ptsonly" id="calHelp">Move both maps so the pink crosses sit on the <b>same spot</b> (a building corner, a path crossing). Then tap <b>Add point</b>. Use 2–3 spots far apart.</p>
+    <div class="row ptsonly">
       <button class="btn" id="calAdd">Add point</button>
       <button class="btn secondary" id="calHere">I'm standing here</button>
     </div>
     <div class="row" style="align-items:center">
-      <span class="calpts" id="calPts" style="flex:1">No points yet.</span>
-      <button class="btn secondary" id="calUndo" style="flex:0;min-width:0">Undo</button>
-      <button class="btn secondary" id="calCopy" style="flex:0;min-width:0;white-space:nowrap" hidden>Copy from…</button>
+      <span class="calpts" id="calPts" style="flex:1 1 100%">No points yet.</span>
+      <button class="btn secondary" id="calFitToggle" style="flex:0 0 auto;min-width:0;white-space:nowrap">Drag to fit</button>
+      <button class="btn secondary" id="calUndo" style="flex:0 0 auto;min-width:0">Undo</button>
+      <button class="btn secondary" id="calCopy" style="flex:0 0 auto;min-width:0;white-space:nowrap" hidden>Copy from…</button>
     </div>
   </div>
 </section>
@@ -282,7 +295,7 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   <div class="bd">
     <p><b>Add to home screen</b> first (Safari: Share → Add to Home Screen. Chrome: ⋮ → Add to Home screen / Install). Then it opens like an app and works offline. On Android you can also share a PDF straight to Vinterkort.</p>
     <p><b>Routes.</b> Make one route per Skyhost route, add all its PDFs, and use Edit to match the stop order. In a map, the arrows at the top go to the previous and next stop. When you walk into another stop's area, the bar at the bottom says "You're at #5…" with an Open button.</p>
-    <p><b>Calibrate once per PDF.</b> The PDFs are pictures without map coordinates, so the app needs to learn where the picture sits in the world. Line up 2–3 spots far apart (opposite corners of the area work best). More points = more accurate. After 2 points, slide "PDF on top" to check the PDF lines up with the satellite picture.</p>
+    <p><b>Calibrate once per PDF.</b> Easiest: <b>drag to fit</b>. The PDF lies see-through on the satellite map: drag it into place, pinch to resize, twist to turn, Save. Or use points: The PDFs are pictures without map coordinates, so the app needs to learn where the picture sits in the world. Line up 2–3 spots far apart (opposite corners of the area work best). More points = more accurate. After 2 points, slide "PDF on top" to check the PDF lines up with the satellite picture.</p>
     <p><b>"I'm standing here"</b> works without internet: walk to a spot you can find on the PDF, put the top cross on it and tap the button. GPS is ±5 m, so pick spots far apart.</p>
     <p><b>The blue dot</b> shows where you are. The light circle around it is how sure the GPS is. If you're off the map, the bar at the bottom tells you how far and which way.</p>
     <p><b>Google Drive.</b> Tap <b>Drive</b>, sign in and pick a folder (for example H4). Its PDFs become a route, and tapping the folder again later only fetches new ones. Calibrations you save are written to <i>vinterkort-calibrations.json</i> in that folder, so they come back on a new phone and are reused when the same address shows up again. Maps marked "First guess: check it" were calibrated for you from the address: open them, slide "PDF on top" and nudge if needed.</p>
