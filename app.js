@@ -397,6 +397,7 @@ async function openViewer(id) {
   setFollow(true);
   startGPS();
   updateStatus();
+  showNotesBanner();
   if (lastFix) onFix(lastFix);
 }
 function closeViewer() { releaseWake(); cur = null; show('library'); renderLibrary(); }
@@ -515,9 +516,40 @@ $('fabCompass').onclick = async () => {
 };
 
 /* notes */
+// Hand-written hints on the work order (key box codes, "remember the stairwell"…): everything in the PDF's
+// text except the standard header and colour legend.
+const LEGEND_RE = /^=|hånd\b|kompakttraktor|centrifugal|stor traktor|skellinje|indgange|døre\/porte|teknisk udstyr|elstander|belægning som|^(kunde|leveringsadresse|leveringssted)\b/i;
+function pdfNotes(m) {
+  const lines = String(m.text || '').split('\n');
+  const out = [];
+  const ki = lines.findIndex((l) => /^\s*kunde\s*:/i.test(l));
+  const customer = ki >= 0 && lines[ki + 1] ? lines[ki + 1].split(/\s{3,}/)[0].trim() : '';
+  const street = (m.address || '').split(',')[0].trim().toLowerCase();
+  for (const l of lines) for (let c of l.split(/\s{3,}/)) {
+    c = c.trim();
+    if (!c || c.length < 3 || LEGEND_RE.test(c)) continue;
+    if (customer && c === customer) continue;
+    if (street && c.toLowerCase().includes(street)) continue;
+    if (/^[\d\s.,-]+$/.test(c)) continue; // stray numbers
+    out.push(c);
+  }
+  return [...new Set(out)];
+}
+const notesSeen = new Set();
+function showNotesBanner() {
+  const el = $('notesBanner');
+  const lines = pdfNotes(cur);
+  const mine = (cur.notes || '').trim();
+  if ((!lines.length && !mine) || notesSeen.has(cur.id)) { el.hidden = true; return; }
+  $('notesBannerText').innerHTML = (mine ? `<div><b>${esc(mine)}</b></div>` : '') + lines.map((l) => `<div>${esc(l)}</div>`).join('');
+  el.hidden = false;
+}
+$('notesBannerClose').onclick = (e) => { e.stopPropagation(); notesSeen.add(cur.id); $('notesBanner').hidden = true; };
+$('notesBanner').onclick = () => $('fabNotes').click();
 $('fabNotes').onclick = () => {
   $('notesText').value = cur.notes || '';
-  $('pdfText').textContent = cur.text || '(No text in this PDF)';
+  const hints = pdfNotes(cur);
+  $('pdfText').textContent = (hints.length ? hints.join('\n') + '\n\n— All text in the PDF —\n' : '') + (cur.text || '(No text in this PDF)');
   openSheet('notesSheet');
 };
 $('notesText').oninput = debounce(async () => { cur.notes = $('notesText').value; await DB.put(cur); }, 400);

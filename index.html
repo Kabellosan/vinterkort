@@ -93,6 +93,9 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
 .status .msg{flex:1;min-width:0}
 .status .btn{min-height:40px;padding:8px 14px}
 
+.nbanner{position:absolute;left:calc(10px + var(--safe-l));right:calc(10px + var(--safe-r));top:10px;z-index:950;display:flex;gap:10px;align-items:flex-start;background:#fff4c2;color:#3a2a00;border:2px solid #e0b400;border-radius:14px;padding:10px 4px 10px 12px;box-shadow:var(--shadow);font-weight:600;max-height:40%;overflow:auto;cursor:pointer}
+.nbanner svg{flex:none;margin-top:2px}.nbanner .t{flex:1;min-width:0}.nbanner .iconbtn{min-width:40px;height:40px;margin-top:-6px}
+
 /* GPS marker */
 .me{position:relative;width:26px;height:26px}
 .me .core{position:absolute;inset:4px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.35),0 1px 4px rgba(0,0,0,.5)}
@@ -180,6 +183,7 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   </header>
   <div style="position:relative;flex:1;display:flex">
     <div id="viewMap"></div>
+    <div class="nbanner" id="notesBanner" role="button" tabindex="0" hidden><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><div class="t" id="notesBannerText"></div><button class="iconbtn" id="notesBannerClose" aria-label="Hide notes">✕</button></div>
     <div class="fabs">
       <button class="fab" id="fabNotes" aria-label="Notes and codes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
       <button class="fab" id="fabCompass" aria-label="Show which way I face"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 5l3 7-3 7-3-7z" fill="currentColor" fill-opacity=".35"/></svg></button>
