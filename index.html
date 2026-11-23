@@ -143,6 +143,7 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   <header class="bar">
     <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#d6338a"/><path d="M32 12c-8 0-14 6-14 14 0 10 14 26 14 26s14-16 14-26c0-8-6-14-14-14z" fill="#fff"/><circle cx="32" cy="26" r="5" fill="#d6338a"/></svg>
     <h1>Vinterkort</h1>
+    <button class="iconbtn" id="btnDrive" aria-label="Sync from Google Drive">Drive</button>
     <button class="iconbtn" id="btnHelp" aria-label="How it works">Help</button>
   </header>
   <main>
@@ -260,6 +261,17 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
   </form>
 </div>
 
+<!-- DRIVE SHEET -->
+<div class="sheet" id="driveSheet" hidden>
+  <div class="hd"><h2>Sync from Google Drive</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+  <div class="bd">
+    <p class="calhelp">One folder = one route. New PDFs in it are added to the route, and calibrations are kept in a small file in the same folder, so you only line up each address once.</p>
+    <div id="driveRecentWrap" hidden><label>Recent</label><div class="list" id="driveRecent"></div></div>
+    <label id="driveMsg">Signing in…</label>
+    <div class="list" id="driveList"></div>
+  </div>
+</div>
+
 <!-- HELP SHEET -->
 <div class="sheet" id="helpSheet" hidden>
   <div class="hd"><h2>How it works</h2><button class="iconbtn" data-close aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
@@ -269,7 +281,8 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
     <p><b>Calibrate once per PDF.</b> The PDFs are pictures without map coordinates, so the app needs to learn where the picture sits in the world. Line up 2–3 spots far apart (opposite corners of the area work best). More points = more accurate. After 2 points, slide "PDF on top" to check the PDF lines up with the satellite picture.</p>
     <p><b>"I'm standing here"</b> works without internet: walk to a spot you can find on the PDF, put the top cross on it and tap the button. GPS is ±5 m, so pick spots far apart.</p>
     <p><b>The blue dot</b> shows where you are. The light circle around it is how sure the GPS is. If you're off the map, the bar at the bottom tells you how far and which way.</p>
-    <p><b>Your PDFs stay on this phone.</b> Nothing is uploaded. Deleting the app's site data or the home screen app removes them.</p>
+    <p><b>Google Drive.</b> Tap <b>Drive</b>, sign in and pick a folder (for example H4). Its PDFs become a route, and tapping the folder again later only fetches new ones. Calibrations you save are written to <i>vinterkort-calibrations.json</i> in that folder, so they come back on a new phone and are reused when the same address shows up again. Maps marked "First guess: check it" were calibrated for you from the address: open them, slide "PDF on top" and nudge if needed.</p>
+    <p><b>Your PDFs stay on this phone and in your own Drive.</b> Nothing is sent anywhere else. Deleting the app's site data or the home screen app removes the phone copy.</p>
   </div>
 </div>
 
@@ -279,5 +292,6 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
 <script src="lib/leaflet.js"></script>
 <script src="lib/pdf.min.js"></script>
 <script src="app.js"></script>
+<script src="drive.js"></script>
 </body>
 </html>

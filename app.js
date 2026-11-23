@@ -195,7 +195,7 @@ async function makeThumb(src) {
   t.getContext('2d').drawImage(src, 0, 0, t.width, t.height);
   return new Promise((r) => t.toBlob(r, 'image/jpeg', 0.8));
 }
-async function importFile(file, route, orderStart) {
+async function importFile(file, route, orderStart, extra) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const ids = [];
@@ -212,6 +212,7 @@ async function importFile(file, route, orderStart) {
       image: r.blob, thumb: r.thumb, w: r.w, h: r.h,
       text, address, notes: '', calib: null, pts: [],
       route: route || '', order: (orderStart || 0) + ids.length,
+      ...(extra || {}), page: p,
     };
     await DB.put(m); ids.push(m.id);
   }
@@ -308,7 +309,7 @@ async function renderLibrary() {
       b.innerHTML = (route ? `<span class="stopno">${i + 1}</span>` : '') +
         `<img alt="" src="${blobUrl('t' + m.id, m.thumb || m.image)}"><div class="t"><div class="n">${esc(m.name)}</div>` +
         `<div class="s">${esc(m.address && m.address !== m.name ? m.address : m.fileName || '')}</div>` +
-        (m.calib ? '<span class="pill ok">GPS ready</span>' : '<span class="pill no">Needs calibration</span>') + '</div>';
+        (m.calib ? (m.calibFrom === 'claude' ? '<span class="pill no">First guess: check it</span>' : '<span class="pill ok">GPS ready</span>') : '<span class="pill no">Needs calibration</span>') + '</div>';
       b.onclick = () => openViewer(m.id);
       row.appendChild(b);
       if (editing) {
@@ -458,7 +459,7 @@ let statusAction = null;
 function setStatus(kind, msg, action, label) {
   const s = $('status'); s.className = 'status ' + (kind || '');
   $('statusMsg').textContent = msg;
-  if (action === true) { action = () => openCalibrate(); label = 'Calibrate'; }
+  if (action === true) { action = () => openCalibrate(); label = label || 'Calibrate'; }
   statusAction = action || null;
   $('statusCal').hidden = !action; if (action) $('statusCal').textContent = label;
 }
@@ -469,7 +470,8 @@ function updateStatus() {
   const { latitude: lat, longitude: lon, accuracy } = lastFix.coords;
   const [x, y] = geoToPx(cur.calib, lat, lon);
   if (x >= 0 && y >= 0 && x <= cur.w && y <= cur.h) {
-    setStatus(accuracy <= 15 ? 'good' : 'bad', `You are on this map · GPS ±${Math.round(accuracy)} m`);
+    if (cur.calibFrom === 'claude') setStatus('bad', `On this map · GPS ±${Math.round(accuracy)} m · first guess, check the dot`, true, 'Fix');
+    else setStatus(accuracy <= 15 ? 'good' : 'bad', `You are on this map · GPS ±${Math.round(accuracy)} m`);
   } else {
     const other = mapAt(libMaps.filter((m) => m.id !== cur.id), lat, lon);
     if (other) {
@@ -682,8 +684,9 @@ $('calBack').onclick = () => openViewer(cur.id);
 $('calSave').onclick = async () => {
   const c = fitCalib(calPts);
   if (!c) return;
-  cur.pts = calPts; cur.calib = c;
+  cur.pts = calPts; cur.calib = c; cur.calibFrom = 'me'; cur.calibDirty = true;
   await DB.put(cur);
+  if (window.vkDrive) vkDrive.pushSoon(cur);
   toast('Calibration saved');
   openViewer(cur.id);
 };
