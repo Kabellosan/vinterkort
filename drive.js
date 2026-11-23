@@ -140,7 +140,8 @@ const vkDrive = (() => {
       const files = (await list(`${q(folder.id)} in parents and mimeType = 'application/pdf' and trashed = false`))
         .sort((a, b) => a.name.localeCompare(b.name, 'da', { numeric: true }));
       let maps = await DB.all();
-      const have = new Set(maps.filter((m) => m.driveId).map((m) => m.driveId));
+      let gone = []; try { gone = JSON.parse(localStorage.getItem('vk-deleted') || '[]'); } catch (e) {}
+      const have = new Set([...maps.filter((m) => m.driveId).map((m) => m.driveId), ...gone]);
       const todo = files.filter((f) => !have.has(f.id));
       // Route name: keep whatever the route from this folder is called on the phone (it may have been renamed).
       const existing = maps.find((m) => m.driveFolder === folder.id);
@@ -163,6 +164,8 @@ const vkDrive = (() => {
       maps = await DB.all();
       let applied = 0, guessed = 0;
       for (const m of maps) {
+        const ap = findEntry(claude, m) || findEntry(mine, m);
+        if (ap && ap.approx && (!m.approx || m.approx.lat !== ap.approx.lat)) { m.approx = ap.approx; await DB.put(m); }
         if (m.calib && m.calibFrom !== 'drive' && m.calibFrom !== 'claude') continue; // calibrated on this phone: keep
         const e = findEntry(mine, m);
         if (e && (!m.calib || m.calibFrom !== 'drive' || e.updated !== m.calibUpdated)) {
