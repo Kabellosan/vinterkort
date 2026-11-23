@@ -300,7 +300,11 @@ async function renderLibrary() {
         for (const m of items) { m.route = v; await DB.put(m); }
         editRoute = v; renderLibrary();
       };
-      const hint = document.createElement('p'); hint.className = 'calhelp'; hint.textContent = 'Use the arrows to match the stop order in Skyhost.'; sec.appendChild(hint);
+      const sb = document.createElement('div'); sb.className = 'editbar';
+      sb.innerHTML = '<button class="btn secondary sm" style="flex:1">Sort by location</button>';
+      sb.firstChild.onclick = () => sortByLocation(items);
+      sec.appendChild(sb);
+      const hint = document.createElement('p'); hint.className = 'calhelp'; hint.textContent = 'Sort by location puts each stop next to the nearest one, starting from where you are (or stop 1). Fine-tune with the arrows to match Skyhost. ✕ deletes a map (tap twice).'; sec.appendChild(hint);
     }
     items.forEach((m, i) => {
       const row = document.createElement('div'); row.className = 'row1';
@@ -317,13 +321,44 @@ async function renderLibrary() {
         const swap = async (j) => { const a = items[i], c = items[j]; items[i] = c; items[j] = a; await saveOrder(items); };
         const col = document.createElement('div'); col.className = 'mvcol';
         col.append(mk('▲', 'Move up', () => swap(i - 1), i === 0), mk('▼', 'Move down', () => swap(i + 1), i === items.length - 1));
-        row.appendChild(col);
+        const del = document.createElement('button'); del.className = 'iconbtn delbtn'; del.textContent = '✕'; del.setAttribute('aria-label', 'Delete ' + m.name);
+        del.onclick = async () => {
+          if (!del.classList.contains('armed')) { del.classList.add('armed'); del.textContent = 'Delete?'; setTimeout(() => { del.classList.remove('armed'); del.textContent = '✕'; }, 3000); return; }
+          await deleteMap(m); toast('Deleted ' + m.name); renderLibrary();
+        };
+        row.append(col, del);
       }
       sec.appendChild(row);
     });
     list.appendChild(sec);
   }
   updateHere(maps);
+}
+// Deleting a map also remembers its Drive file, so the next Drive sync doesn't bring it back.
+async function deleteMap(m) {
+  await DB.del(m.id);
+  if (m.driveId) {
+    try { const d = JSON.parse(localStorage.getItem('vk-deleted') || '[]'); d.push(m.driveId); localStorage.setItem('vk-deleted', JSON.stringify(d.slice(-500))); } catch (e) {}
+  }
+}
+// Where a map is: its calibration centre, else the address position from Drive (approx).
+function mapPos(m) {
+  if (m.calib) return pxToGeo(m.calib, m.w / 2, m.h / 2);
+  if (m.approx && m.approx.lat) return [m.approx.lat, m.approx.lon];
+  return null;
+}
+async function sortByLocation(items) {
+  const known = items.filter((m) => mapPos(m)), unknown = items.filter((m) => !mapPos(m));
+  if (known.length < 2) { toast('Not enough maps with a known location yet. Calibrate some, or sync from Drive.'); return; }
+  let here = lastFix ? [lastFix.coords.latitude, lastFix.coords.longitude] : mapPos(known[0]);
+  const left = [...known], out = [];
+  while (left.length) {
+    let bi = 0, bd = Infinity;
+    left.forEach((m, i) => { const [la, lo] = mapPos(m); const d = distBearing(here[0], here[1], la, lo)[0]; if (d < bd) { bd = d; bi = i; } });
+    const m = left.splice(bi, 1)[0]; out.push(m); here = mapPos(m);
+  }
+  await saveOrder([...out, ...unknown]);
+  toast(unknown.length ? `Sorted. ${unknown.length} map${unknown.length > 1 ? 's' : ''} without a location went to the end.` : 'Sorted by location');
 }
 async function saveOrder(items) {
   for (let k = 0; k < items.length; k++) { items[k].order = k; await DB.put(items[k]); }
@@ -565,7 +600,7 @@ $('mCal').onclick = () => { closeSheet(); openCalibrate(); };
 $('mRename').onclick = () => { $('renameRow').hidden = false; $('renameIn').value = cur.name; $('renameIn').focus(); };
 $('renameOk').onclick = async () => { const v = $('renameIn').value.trim(); if (v) { cur.name = v; await DB.put(cur); $('viewTitle').textContent = v; } closeSheet(); };
 $('mDelete').onclick = () => { $('delRow').hidden = false; };
-$('delYes').onclick = async () => { await DB.del(cur.id); closeSheet(); cur = null; closeViewer(); toast('Map deleted'); };
+$('delYes').onclick = async () => { await deleteMap(cur); closeSheet(); cur = null; closeViewer(); toast('Map deleted'); };
 $('mRotate').onclick = async () => {
   closeSheet(); busy(true, 'Rotating…');
   try {
