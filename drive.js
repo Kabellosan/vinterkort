@@ -162,10 +162,13 @@ const vkDrive = (() => {
       const mine = (await readJson(folder.id, APP_FILE)).data.maps;
       const claude = (await readJson(folder.id, CLAUDE_FILE)).data.maps;
       maps = await DB.all();
-      let applied = 0, guessed = 0;
+      let applied = 0, guessed = 0, renamed = 0, reordered = 0;
       for (const m of maps) {
         const ap = findEntry(claude, m) || findEntry(mine, m);
         if (ap && ap.approx && (!m.approx || m.approx.lat !== ap.approx.lat)) { m.approx = ap.approx; await DB.put(m); }
+        // Stop name and number from the route list (e.g. Skyhost's service call list). A name you typed yourself wins.
+        if (ap && ap.stopName && m.nameFrom !== 'me' && m.name !== ap.stopName) { m.name = ap.stopName; m.nameFrom = 'list'; await DB.put(m); renamed++; }
+        if (ap && ap.stopNo && m.stopNoApplied !== ap.stopNo) { m.order = ap.stopNo - 1; m.stopNoApplied = ap.stopNo; await DB.put(m); reordered++; }
         if (m.calib && m.calibFrom !== 'drive' && m.calibFrom !== 'claude') continue; // calibrated on this phone: keep
         const e = findEntry(mine, m);
         if (e && (!m.calib || m.calibFrom !== 'drive' || e.updated !== m.calibUpdated)) {
@@ -180,6 +183,7 @@ const vkDrive = (() => {
       if (applied) parts.push(`${applied} calibration${applied > 1 ? 's' : ''} from Drive`);
       if (guessed) parts.push(`${guessed} first guess${guessed > 1 ? 'es' : ''} to check`);
       if (pushed) parts.push(`${pushed} uploaded`);
+      if (renamed || reordered) parts.push('names and order from the stop list');
       if (failed) parts.push(`${failed} failed`);
       toast(parts.join(' · '), 4500);
     } finally { busy(false); }
