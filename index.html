@@ -98,6 +98,11 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
 .nbanner{position:absolute;left:calc(10px + var(--safe-l));right:calc(10px + var(--safe-r));top:10px;z-index:950;display:flex;gap:10px;align-items:flex-start;background:#fff4c2;color:#3a2a00;border:2px solid #e0b400;border-radius:14px;padding:10px 4px 10px 12px;box-shadow:var(--shadow);font-weight:600;max-height:40%;overflow:auto;cursor:pointer}
 .nbanner svg{flex:none;margin-top:2px}.nbanner .t{flex:1;min-width:0}.nbanner .iconbtn{min-width:40px;height:40px;margin-top:-6px}
 
+.areaimg{opacity:.85}.areaimg.cur{outline:3px solid var(--pink)}
+.areano{width:34px;height:34px;border-radius:50%;background:var(--ink);color:var(--bg);border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:pointer}
+.areano.cur{background:var(--pink);color:#fff}
+#areaMap{background:var(--bg)}
+
 /* GPS marker */
 .me{position:relative;width:26px;height:26px}
 .me .core{position:absolute;inset:4px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.35),0 1px 4px rgba(0,0,0,.5)}
@@ -196,6 +201,7 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
     <div id="viewMap"></div>
     <div class="nbanner" id="notesBanner" role="button" tabindex="0" hidden><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><div class="t" id="notesBannerText"></div><button class="iconbtn" id="notesBannerClose" aria-label="Hide notes">✕</button></div>
     <div class="fabs">
+      <button class="fab" id="fabArea" aria-label="Show nearby stops together"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
       <button class="fab" id="fabNotes" aria-label="Notes and codes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
       <button class="fab" id="fabCompass" aria-label="Show which way I face"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 5l3 7-3 7-3-7z" fill="currentColor" fill-opacity=".35"/></svg></button>
       <button class="fab" id="fabFollow" aria-label="Center on me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
@@ -233,6 +239,19 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
       <button class="btn secondary" id="calUndo" style="flex:0 0 auto;min-width:0">Undo</button>
       <button class="btn secondary" id="calCopy" style="flex:0 0 auto;min-width:0;white-space:nowrap" hidden>Copy from…</button>
     </div>
+  </div>
+</section>
+
+<!-- AREA: nearby stops stitched together -->
+<section id="area" class="screen" hidden>
+  <header class="bar">
+    <button class="iconbtn" id="areaBack" aria-label="Back to the map"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <h1 id="areaTitle">Area</h1>
+  </header>
+  <div style="position:relative;flex:1;display:flex">
+    <div id="areaMap" style="flex:1"></div>
+    <div class="fabs"><button class="fab on" id="areaFollow" aria-label="Center on me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button></div>
+    <div class="status"><span class="dot"></span><span class="msg" id="areaStatus">Waiting for GPS…</span><label style="display:flex;align-items:center;gap:6px;font-size:13px">Maps<input type="range" id="areaFade" min="20" max="100" value="85" style="width:90px"></label></div>
   </div>
 </section>
 
@@ -299,6 +318,7 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
     <p><b>Routes.</b> Make one route per Skyhost route, add all its PDFs, and use Edit to match the stop order. In a map, the arrows at the top go to the previous and next stop. When you walk into another stop's area, the bar at the bottom says "You're at #5…" with an Open button.</p>
     <p><b>Calibrate once per PDF.</b> Easiest: <b>drag to fit</b>. The PDF lies see-through on the satellite map: drag it into place, pinch to resize, twist to turn, Save. Or use points: The PDFs are pictures without map coordinates, so the app needs to learn where the picture sits in the world. Line up 2–3 spots far apart (opposite corners of the area work best). More points = more accurate. After 2 points, slide "PDF on top" to check the PDF lines up with the satellite picture.</p>
     <p><b>"I'm standing here"</b> works without internet: walk to a spot you can find on the PDF, put the top cross on it and tap the button. GPS is ±5 m, so pick spots far apart.</p>
+    <p><b>Area view</b> (the map-sheet button) puts all calibrated stops within about 350 m on one satellite map, with your blue dot. Handy where you park once and walk between several stops. Tap a number to open that stop.</p>
     <p><b>The blue dot</b> shows where you are. The light circle around it is how sure the GPS is. If you're off the map, the bar at the bottom tells you how far and which way.</p>
     <p><b>Google Drive.</b> Tap <b>Drive</b>, sign in and pick a folder (for example H4). Its PDFs become a route, and tapping the folder again later only fetches new ones. Calibrations you save are written to <i>vinterkort-calibrations.json</i> in that folder, so they come back on a new phone and are reused when the same address shows up again. Maps marked "First guess: check it" were calibrated for you from the address: open them, slide "PDF on top" and nudge if needed.</p>
     <p><b>Your PDFs stay on this phone and in your own Drive.</b> Nothing is sent anywhere else. Deleting the app's site data or the home screen app removes the phone copy.</p>
@@ -312,5 +332,6 @@ header.bar h1{font-size:18px;margin:0;flex:1;min-width:0;white-space:nowrap;over
 <script src="lib/pdf.min.js"></script>
 <script src="app.js"></script>
 <script src="drive.js"></script>
+<script src="area.js"></script>
 </body>
 </html>

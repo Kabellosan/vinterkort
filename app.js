@@ -43,7 +43,7 @@ function toast(msg, ms = 2600) {
 }
 function busy(on, msg) { $('busy').hidden = !on; if (msg) $('busy').textContent = msg; }
 function show(screen) {
-  for (const s of ['library', 'viewer', 'calibrate']) $(s).hidden = s !== screen;
+  for (const s of ['library', 'viewer', 'calibrate', 'area']) $(s).hidden = s !== screen;
 }
 let openSheetEl = null;
 function openSheet(id) { closeSheet(); openSheetEl = $(id); openSheetEl.hidden = false; $('scrim').hidden = false; }
@@ -463,6 +463,7 @@ function onGpsErr(e) {
 }
 function onFix(pos) {
   lastFix = pos;
+  if (window.vkArea) vkArea.onFix(pos);
   if (pos.coords.heading != null && !isNaN(pos.coords.heading) && pos.coords.speed > 0.7 && !compassOn) heading = pos.coords.heading;
   if (!$('calibrate').hidden) return;
   if (!$('library').hidden) { updateHere(); return; }
