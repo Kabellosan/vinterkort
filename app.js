@@ -757,7 +757,7 @@ $('fitRotR').onclick = () => { if (!fit) return; fit.th += 1 * D2R; fitTouched =
     const v = start.c.subtract(start.mid);
     const rv = L.point(v.x * Math.cos(da) - v.y * Math.sin(da), v.x * Math.sin(da) + v.y * Math.cos(da)).multiplyBy(k);
     const ll = calB.containerPointToLatLng(now.mid.add(rv));
-    fit.lat = ll.lat; fit.lon = ll.lng; fit.s = start.s / k; fit.th = start.th + da;
+    fit.lat = ll.lat; fit.lon = ll.lng; fit.s = start.s * k; fit.th = start.th + da;
     fitTouched = true; applyFit(false);
   });
   const end = (e) => { if (!ptrs.delete(e.pointerId)) return; start = ptrs.size ? snapshot() : null; if (!ptrs.size && fit) applyFit(true); };
@@ -767,7 +767,7 @@ $('fitRotR').onclick = () => { if (!fit) return; fit.th += 1 * D2R; fitTouched =
     if (!fit) return; e.preventDefault();
     const k = Math.exp(-e.deltaY / 500), m = pos(e), c = calB.latLngToContainerPoint([fit.lat, fit.lon]);
     const ll = calB.containerPointToLatLng(m.add(c.subtract(m).multiplyBy(k)));
-    fit.lat = ll.lat; fit.lon = ll.lng; fit.s /= k; fitTouched = true; applyFit(true);
+    fit.lat = ll.lat; fit.lon = ll.lng; fit.s *= k; fitTouched = true; applyFit(true);
   }, { passive: false });
 })();
 function makeGhost(map) {
