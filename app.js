@@ -598,7 +598,7 @@ $('viewMenu').onclick = () => {
 };
 $('mCal').onclick = () => { closeSheet(); openCalibrate(); };
 $('mRename').onclick = () => { $('renameRow').hidden = false; $('renameIn').value = cur.name; $('renameIn').focus(); };
-$('renameOk').onclick = async () => { const v = $('renameIn').value.trim(); if (v) { cur.name = v; await DB.put(cur); $('viewTitle').textContent = v; } closeSheet(); };
+$('renameOk').onclick = async () => { const v = $('renameIn').value.trim(); if (v) { cur.name = v; cur.nameFrom = 'me'; await DB.put(cur); $('viewTitle').textContent = v; } closeSheet(); };
 $('mDelete').onclick = () => { $('delRow').hidden = false; };
 $('delYes').onclick = async () => { await deleteMap(cur); closeSheet(); cur = null; closeViewer(); toast('Map deleted'); };
 $('mRotate').onclick = async () => {
